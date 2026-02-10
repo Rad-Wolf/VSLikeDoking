@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="VSLikeDoking.Demo/VSLikeDoking.Demo.csproj" />
+  <Project Path="VsLikeDoking/VsLikeDoking.csproj" />
+</Solution>

@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+	<TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+	<UseWindowsForms>true</UseWindowsForms>
+	<FileVersion>260123.0.1</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="UI\Host\h2l0sbxu.rh1~" />
+  </ItemGroup>
+
+</Project>
