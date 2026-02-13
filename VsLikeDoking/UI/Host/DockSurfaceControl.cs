@@ -1666,7 +1666,6 @@ namespace VsLikeDoking.UI.Host
     }
 
     // Tab Drag&Drop / Overlay / Splitter Drag / Drawing / Helpers / Overlay Form ====================
-    // ===============================================================================================
 
     private void OnTabDragBegun(DockDragDropService.DragInfo info)
     {
@@ -2288,48 +2287,52 @@ namespace VsLikeDoking.UI.Host
       var hover = _InputRouter.Hover;
       var pressed = _InputRouter.Pressed;
 
-      var popupKey = NormalizeAutoHideKey(_Manager?.ActiveAutoHideKey);
-      if (!string.IsNullOrWhiteSpace(popupKey)) popupKey = popupKey!.Trim();
+      var popupKey = _Manager?.ActiveAutoHideKey;
+      if (!string.IsNullOrWhiteSpace( popupKey )) popupKey = popupKey!.Trim( );
 
-      for (int si = 0; si < strips.Count; si++)
+      for (int si = 0 ; si < strips.Count ; si++)
       {
-        var sv = strips[si];
+        var sv = strips [ si ];
         if (sv.Bounds.IsEmpty) continue;
 
-        _Renderer.DrawAutoHideStripBackground(g, sv.Bounds);
+        _Renderer.DrawAutoHideStripBackground( g, sv.Bounds );
 
-        var dir = MapAutoHideEdgeToTextDirection(sv.Edge);
+        var dir = MapAutoHideEdgeToTextDirection( sv.Edge );
 
         var start = sv.TabStart;
         var end = sv.TabStart + sv.TabCount;
 
-        for (int ti = start; ti < end; ti++)
+        for (int ti = start ; ti < end ; ti++)
         {
-          if ((uint)ti >= (uint)_Tree.AutoHideTabs.Count) break;
+          if ((uint) ti >= (uint) _Tree.AutoHideTabs.Count) break;
 
-          var tv = _Tree.AutoHideTabs[ti];
+          var tv = _Tree.AutoHideTabs [ ti ];
 
-          var key = GetAutoHideTabPersistKeySafe(tv.ContentKey, tv);
-          var text = string.IsNullOrWhiteSpace(key) ? string.Empty : GetTitleOrKey(key);
+          var key = GetAutoHideTabPersistKeySafe( tv.ContentKey, tv );
+          var text = string.IsNullOrWhiteSpace( key ) ? string.Empty : GetTitleOrKey( key );
 
           var isActive = tv.IsActive;
 
           // Manager가 표시 중인 AutoHide 키를 우선 반영(레이아웃 트리 동기화가 늦는 프레임 방지)
-          if (!string.IsNullOrWhiteSpace(popupKey) && !string.IsNullOrWhiteSpace(key))
-            isActive |= string.Equals(popupKey, key, StringComparison.Ordinal);
+          if (!string.IsNullOrWhiteSpace( popupKey ) && !string.IsNullOrWhiteSpace( key ))
+            isActive |= string.Equals( popupKey, key, StringComparison.Ordinal );
+
+          var localIndex = ti - start;
+
+          var isHoverHot =
+            hover.Kind == DockVisualTree.RegionKind.AutoHideTab
+            && (hover.AutoHideTabIndex == ti || (hover.AutoHideStripIndex == si && hover.AutoHideTabIndex == localIndex));
+
+          var isPressedHot =
+            pressed.Kind == DockVisualTree.RegionKind.AutoHideTab
+            && (pressed.AutoHideTabIndex == ti || (pressed.AutoHideStripIndex == si && pressed.AutoHideTabIndex == localIndex));
 
           var state = DockRenderer.TabVisualState.Normal;
 
           if (isActive) state = DockRenderer.TabVisualState.Active;
-          else
-          {
-            if (hover.Kind == DockVisualTree.RegionKind.AutoHideTab && hover.AutoHideTabIndex == ti)
-              state = DockRenderer.TabVisualState.Hot;
-            else if (pressed.Kind == DockVisualTree.RegionKind.AutoHideTab && pressed.AutoHideTabIndex == ti)
-              state = DockRenderer.TabVisualState.Hot;
-          }
+          else if (isHoverHot || isPressedHot) state = DockRenderer.TabVisualState.Hot;
 
-          _Renderer.DrawAutoHideTab(g, tv.Bounds, text, state, dir);
+          _Renderer.DrawAutoHideTab( g, tv.Bounds, text, state, dir );
         }
       }
     }
@@ -2403,42 +2406,31 @@ namespace VsLikeDoking.UI.Host
     private void HandleActivateAutoHideTab(int stripIndex, int tabIndex)
     {
       if (_Manager is null) return;
-      if ((uint)stripIndex >= (uint)_Tree.AutoHideStrips.Count) return;
-      if ((uint)tabIndex >= (uint)_Tree.AutoHideTabs.Count) return;
 
-      var tv = _Tree.AutoHideTabs[tabIndex];
-      var key = GetAutoHideTabPersistKeySafe(tv.ContentKey, tv);
-      if (string.IsNullOrWhiteSpace(key)) return;
+      if (!TryResolveAutoHideTabIndices( stripIndex, tabIndex, out _, out var globalIndex ))
+        return;
 
-      key = key.Trim();
+      if ((uint) globalIndex >= (uint) _Tree.AutoHideTabs.Count) return;
+
+      var tv = _Tree.AutoHideTabs [ globalIndex ];
+      var key = GetAutoHideTabPersistKeySafe( tv.ContentKey, tv );
+      if (string.IsNullOrWhiteSpace( key )) return;
+
+      key = key.Trim( );
       if (key.Length == 0) return;
 
-      // (PATCH) VisualTree 메타 매칭 실패해도 팝업 위치를 잡을 수 있도록 side 캐시
-      try
-      {
-        var edge = _Tree.AutoHideStrips[stripIndex].Edge;
-        _AutoHidePopupSideCache = MapAutoHideEdgeToSide(edge);
-        _AutoHidePopupSideCacheKey = key;
-      }
-      catch
-      {
-        _AutoHidePopupSideCache = DockAutoHideSide.Left;
-        _AutoHidePopupSideCacheKey = key;
-      }
+      // "Show" 우선(토글은 상태 불일치 시 반대로 동작 가능)
+      var shown =
+        TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key, "UI:AutoHideTab" )
+        || TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key )
+        || TryInvokeByReflection( _Manager, "ToggleAutoHidePopup", key, "UI:AutoHideTab" )
+        || TrySetManagerAutoHidePopup( key, visible: true );
 
-      // Manager가 제공하는 ToggleAutoHidePopup(String persistKey, String reason)를 최우선 사용
-      if (TryInvokeByReflection(_Manager, "ToggleAutoHidePopup", key, "UI:AutoHideTab"))
-      {
-        _Manager.SetActiveContent(key);
-        MarkVisualDirtyAndRender();
-        return;
-      }
+      // VS 느낌: 팝업을 열며 활성도 tool로 맞춘다.
+      _Manager.SetActiveContent( key );
 
-      // fallback: 표시
-      TrySetManagerAutoHidePopup(key, visible: true);
-
-      _Manager.SetActiveContent(key);
-      MarkVisualDirtyAndRender();
+      if (shown) MarkVisualDirtyAndRender( );
+      else RequestRender( );
     }
 
     private void HandleDismissAutoHidePopup()
@@ -2636,6 +2628,47 @@ namespace VsLikeDoking.UI.Host
       }
 
       return string.Empty;
+    }
+
+    private bool TryResolveAutoHideTabIndices ( int stripIndex, int tabIndex, out int resolvedStripIndex, out int globalTabIndex )
+    {
+      resolvedStripIndex = -1;
+      globalTabIndex = -1;
+
+      if (tabIndex < 0) return false;
+
+      // stripIndex가 정상인 경우: local/global 둘 다 허용
+      if ((uint) stripIndex < (uint) _Tree.AutoHideStrips.Count)
+      {
+        var strip = _Tree.AutoHideStrips [ stripIndex ];
+        resolvedStripIndex = stripIndex;
+
+        // Accept both "strip-local" and "global" tabIndex.
+        if (tabIndex < strip.TabCount) globalTabIndex = strip.TabStart + tabIndex;
+        else if (tabIndex >= strip.TabStart && tabIndex < strip.TabStart + strip.TabCount) globalTabIndex = tabIndex;
+        else return false;
+
+        return (uint) globalTabIndex < (uint) _Tree.AutoHideTabs.Count;
+      }
+
+      // stripIndex가 유실된 케이스: tabIndex를 global로 보고 스트립을 역추적
+      if ((uint) tabIndex >= (uint) _Tree.AutoHideTabs.Count) return false;
+
+      for (int si = 0 ; si < _Tree.AutoHideStrips.Count ; si++)
+      {
+        var s = _Tree.AutoHideStrips [ si ];
+        var start = s.TabStart;
+        var end = start + s.TabCount;
+
+        if (tabIndex >= start && tabIndex < end)
+        {
+          resolvedStripIndex = si;
+          globalTabIndex = tabIndex;
+          return true;
+        }
+      }
+
+      return false;
     }
 
     // Reflection bridges (DockManager/Registry API 차이를 흡수) =====================================

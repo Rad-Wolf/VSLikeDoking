@@ -298,4 +298,14 @@ namespace VsLikeDoking.UI.Visual
       secondaryIndex = -1;
     }
   }
+
+  // Extensions ====================================================================================
+
+  /// <summary>DockHitTestResult 호환(legacy) 확장 메서드 모음</summary>
+  public static class DockHitTestResultExtensions
+  {
+    /// <summary>메서드형 호출 호환: result.IsHit()</summary>
+    public static bool IsHit(this DockHitTest.DockHitTestResult result)
+      => result.IsHit;
+  }
 }
