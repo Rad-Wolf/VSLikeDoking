@@ -25,7 +25,7 @@ namespace VsLikeDoking.Demo.Forms
     private readonly SplitContainer _Split;
 
     private readonly Panel _SideTop;
-    private readonly FlowLayoutPanel _SideButtons;
+
     private readonly Label _AutoHideState;
 
     private readonly TextBox _LogSide;
@@ -72,24 +72,25 @@ namespace VsLikeDoking.Demo.Forms
 
       _SideTop = new Panel { Dock = DockStyle.Top, Height = 54 };
 
-      _SideButtons = new FlowLayoutPanel
-      {
-        Dock = DockStyle.Fill,
-        WrapContents = true,
-        AutoScroll = true,
-        Padding = new Padding(4, 4, 4, 2),
-      };
+
+
+
+
+
+
+
+
 
       _AutoHideState = new Label
       {
-        Dock = DockStyle.Bottom,
-        Height = 18,
+        Dock = DockStyle.Fill,
+        Height = 20,
         TextAlign = ContentAlignment.MiddleLeft,
         Padding = new Padding(6, 0, 6, 0),
         Text = "AutoHide: -",
       };
 
-      _SideTop.Controls.Add(_SideButtons);
+
       _SideTop.Controls.Add(_AutoHideState);
 
       _LogSide = CreateLogTextBox();
@@ -109,7 +110,7 @@ namespace VsLikeDoking.Demo.Forms
       _ToolSeq = 0;
 
       BuildMenu();
-      BuildSideButtons();
+
 
       RecreateHost();
       Log("[BOOT] Form constructed.");
@@ -229,39 +230,6 @@ namespace VsLikeDoking.Demo.Forms
       _Menu.Items.Add(autoHide);
     }
 
-    private void BuildSideButtons()
-    {
-      _SideButtons.Controls.Clear();
-
-      var bPinL = new Button { Text = "Pin Tool -> Left", AutoSize = true };
-      var bPinR = new Button { Text = "Pin Tool -> Right", AutoSize = true };
-      var bPinT = new Button { Text = "Pin Tool -> Top", AutoSize = true };
-      var bPinB = new Button { Text = "Pin Tool -> Bottom", AutoSize = true };
-      var bUnpin = new Button { Text = "Unpin (Last)", AutoSize = true };
-
-      var bToggle = new Button { Text = "Toggle Popup", AutoSize = true };
-      var bHide = new Button { Text = "Hide Popup", AutoSize = true };
-      var bDump = new Button { Text = "Dump AutoHide", AutoSize = true };
-
-      bPinL.Click += (s, e) => PinToolToAutoHide(DockAutoHideSide.Left);
-      bPinR.Click += (s, e) => PinToolToAutoHide(DockAutoHideSide.Right);
-      bPinT.Click += (s, e) => PinToolToAutoHide(DockAutoHideSide.Top);
-      bPinB.Click += (s, e) => PinToolToAutoHide(DockAutoHideSide.Bottom);
-      bUnpin.Click += (s, e) => UnpinLastAutoHide();
-
-      bToggle.Click += (s, e) => ToggleAutoHidePopup();
-      bHide.Click += (s, e) => HideAutoHidePopup();
-      bDump.Click += (s, e) => DumpAutoHideState();
-
-      _SideButtons.Controls.Add(bPinL);
-      _SideButtons.Controls.Add(bPinR);
-      _SideButtons.Controls.Add(bPinT);
-      _SideButtons.Controls.Add(bPinB);
-      _SideButtons.Controls.Add(bUnpin);
-      _SideButtons.Controls.Add(bToggle);
-      _SideButtons.Controls.Add(bHide);
-      _SideButtons.Controls.Add(bDump);
-    }
 
     // Event Handlers ===============================================================================================
 
