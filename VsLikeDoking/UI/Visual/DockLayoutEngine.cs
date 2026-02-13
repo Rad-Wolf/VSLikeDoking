@@ -108,8 +108,8 @@ namespace VsLikeDoking.UI.Visual
       // AutoHide leaf가 비어있는 경우(아이템 없음/유효 키 없음)에는
       // split 비율을 그대로 쓰면 "빈 strip 공간"만 남는다.
       // 이 경우 반대편을 전체 bounds로 그려 시각적인 빈 레일을 제거한다.
-      var collapseFirst = IsEffectivelyEmptyAutoHideLeaf(node.First);
-      var collapseSecond = IsEffectivelyEmptyAutoHideLeaf(node.Second);
+      var collapseFirst = IsEffectivelyEmptyVisualLeaf(node.First);
+      var collapseSecond = IsEffectivelyEmptyVisualLeaf(node.Second);
 
       if (collapseFirst && !collapseSecond)
       {
@@ -172,20 +172,34 @@ namespace VsLikeDoking.UI.Visual
       VisitNode(node.Second, secondBoundsH, tree);
     }
 
-    private static bool IsEffectivelyEmptyAutoHideLeaf(DockNode node)
+    private static bool IsEffectivelyEmptyVisualLeaf(DockNode node)
     {
-      if (node is not DockAutoHideNode ah) return false;
-
-      var items = ah.Items;
-      if (items is null || items.Count == 0) return true;
-
-      for (int i = 0; i < items.Count; i++)
+      if (node is DockAutoHideNode ah)
       {
-        var key = NormalizeKey(items[i].PersistKey);
-        if (key is not null) return false;
+        var items = ah.Items;
+        if (items is null || items.Count == 0) return true;
+
+        for (int i = 0; i < items.Count; i++)
+        {
+          var key = NormalizeKey(items[i].PersistKey);
+          if (key is not null) return false;
+        }
+
+        return true;
       }
 
-      return true;
+      // 비어 있는 ToolWindow 그룹도 화면상으로는 의미 없는 공간이므로 split에서 접는다.
+      if (node is DockGroupNode g)
+        return g.ContentKind == DockContentKind.ToolWindow && g.Items.Count == 0;
+
+      // 비어 있는 브랜치 전파: 자식이 모두 비어 있으면 상위 split도 비어 있다고 본다.
+      if (node is DockSplitNode s)
+        return IsEffectivelyEmptyVisualLeaf(s.First) && IsEffectivelyEmptyVisualLeaf(s.Second);
+
+      if (node is DockFloatingNode f)
+        return IsEffectivelyEmptyVisualLeaf(f.Root);
+
+      return false;
     }
 
     private void BuildGroup(DockGroupNode node, Rectangle bounds, DockVisualTree tree)
