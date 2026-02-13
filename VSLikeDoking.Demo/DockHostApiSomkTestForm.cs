@@ -71,7 +71,6 @@ namespace VsLikeDoking.Demo.Forms
 
       _SideTop = new Panel { Dock = DockStyle.Top, Height = 54 };
 
-
       _AutoHideState = new Label
       {
         Dock = DockStyle.Fill,
@@ -80,7 +79,6 @@ namespace VsLikeDoking.Demo.Forms
         Padding = new Padding(6, 0, 6, 0),
         Text = "AutoHide: -",
       };
-
 
       _SideTop.Controls.Add(_AutoHideState);
 
@@ -219,7 +217,6 @@ namespace VsLikeDoking.Demo.Forms
       _Menu.Items.Add(actions);
       _Menu.Items.Add(autoHide);
     }
-
 
     // Event Handlers ===============================================================================================
 

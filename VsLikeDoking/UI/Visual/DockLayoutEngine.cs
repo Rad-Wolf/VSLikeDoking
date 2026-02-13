@@ -105,6 +105,30 @@ namespace VsLikeDoking.UI.Visual
 
     private void BuildSplit(DockSplitNode node, Rectangle bounds, DockVisualTree tree)
     {
+      // AutoHide leaf가 비어있는 경우(아이템 없음/유효 키 없음)에는
+      // split 비율을 그대로 쓰면 "빈 strip 공간"만 남는다.
+      // 이 경우 반대편을 전체 bounds로 그려 시각적인 빈 레일을 제거한다.
+      var collapseFirst = IsEffectivelyEmptyAutoHideLeaf(node.First);
+      var collapseSecond = IsEffectivelyEmptyAutoHideLeaf(node.Second);
+
+      if (collapseFirst && !collapseSecond)
+      {
+        VisitNode(node.Second, bounds, tree);
+        return;
+      }
+
+      if (!collapseFirst && collapseSecond)
+      {
+        VisitNode(node.First, bounds, tree);
+        return;
+      }
+
+      if (collapseFirst && collapseSecond)
+      {
+        tree.AddEmptyRegion(bounds);
+        return;
+      }
+
       var thickness = _Metrics.SplitterVisualThickness;
       if (thickness < 1) thickness = 1;
 
@@ -146,6 +170,22 @@ namespace VsLikeDoking.UI.Visual
       tree.AddSplit(node, bounds, splitterBoundsH, DockVisualTree.SplitAxis.Horizontal, (float)ratio);
       VisitNode(node.First, firstBoundsH, tree);
       VisitNode(node.Second, secondBoundsH, tree);
+    }
+
+    private static bool IsEffectivelyEmptyAutoHideLeaf(DockNode node)
+    {
+      if (node is not DockAutoHideNode ah) return false;
+
+      var items = ah.Items;
+      if (items is null || items.Count == 0) return true;
+
+      for (int i = 0; i < items.Count; i++)
+      {
+        var key = NormalizeKey(items[i].PersistKey);
+        if (key is not null) return false;
+      }
+
+      return true;
     }
 
     private void BuildGroup(DockGroupNode node, Rectangle bounds, DockVisualTree tree)
