@@ -2295,12 +2295,12 @@ namespace VsLikeDoking.UI.Host
         var sv = strips [ si ];
         if (sv.Bounds.IsEmpty) continue;
 
-        _Renderer.DrawAutoHideStripBackground( g, sv.Bounds );
-
         var dir = MapAutoHideEdgeToTextDirection( sv.Edge );
 
         var start = sv.TabStart;
         var end = sv.TabStart + sv.TabCount;
+
+        _Renderer.DrawAutoHideStripBackground( g, sv.Bounds );
 
         for (int ti = start ; ti < end ; ti++)
         {
@@ -2423,12 +2423,10 @@ namespace VsLikeDoking.UI.Host
       var shown =
         TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key, "UI:AutoHideTab" )
         || TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key )
-        || TryInvokeByReflection( _Manager, "ToggleAutoHidePopup", key, "UI:AutoHideTab" )
         || TrySetManagerAutoHidePopup( key, visible: true );
 
-      // VS 느낌: 팝업을 열며 활성도 tool로 맞춘다.
-      _Manager.SetActiveContent( key );
-
+      // ShowAutoHidePopup 내부에서 ActiveContent까지 맞추므로 여기서 다시 SetActiveContent를 호출하면
+      // 동일 키 재진입으로 토글-off가 발생할 수 있다.
       if (shown) MarkVisualDirtyAndRender( );
       else RequestRender( );
     }
