@@ -2426,9 +2426,8 @@ namespace VsLikeDoking.UI.Host
         || TryInvokeByReflection( _Manager, "ToggleAutoHidePopup", key, "UI:AutoHideTab" )
         || TrySetManagerAutoHidePopup( key, visible: true );
 
-      // VS 느낌: 팝업을 열며 활성도 tool로 맞춘다.
-      _Manager.SetActiveContent( key );
-
+      // ShowAutoHidePopup 내부에서 ActiveContent까지 맞추므로 여기서 다시 SetActiveContent를 호출하면
+      // 동일 키 재진입으로 토글-off가 발생할 수 있다.
       if (shown) MarkVisualDirtyAndRender( );
       else RequestRender( );
     }
