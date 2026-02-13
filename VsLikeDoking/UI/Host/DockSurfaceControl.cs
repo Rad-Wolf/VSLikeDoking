@@ -2295,12 +2295,24 @@ namespace VsLikeDoking.UI.Host
         var sv = strips [ si ];
         if (sv.Bounds.IsEmpty) continue;
 
-        _Renderer.DrawAutoHideStripBackground( g, sv.Bounds );
-
         var dir = MapAutoHideEdgeToTextDirection( sv.Edge );
 
         var start = sv.TabStart;
         var end = sv.TabStart + sv.TabCount;
+
+        // 긴 strip 전체 배경을 항상 칠하면 "빈 세로 레일"처럼 보여서,
+        // 탭이 실제로 그려지는 영역 union만 배경으로 사용한다.
+        Rectangle stripPaintBounds = Rectangle.Empty;
+        for (int ti = start ; ti < end ; ti++)
+        {
+          if ((uint) ti >= (uint) _Tree.AutoHideTabs.Count) break;
+          var tb = _Tree.AutoHideTabs [ ti ].Bounds;
+          if (tb.IsEmpty) continue;
+          stripPaintBounds = stripPaintBounds.IsEmpty ? tb : Rectangle.Union(stripPaintBounds, tb);
+        }
+
+        if (!stripPaintBounds.IsEmpty)
+          _Renderer.DrawAutoHideStripBackground( g, stripPaintBounds );
 
         for (int ti = start ; ti < end ; ti++)
         {
@@ -2426,9 +2438,8 @@ namespace VsLikeDoking.UI.Host
         || TryInvokeByReflection( _Manager, "ToggleAutoHidePopup", key, "UI:AutoHideTab" )
         || TrySetManagerAutoHidePopup( key, visible: true );
 
-      // VS 느낌: 팝업을 열며 활성도 tool로 맞춘다.
-      _Manager.SetActiveContent( key );
-
+      // ShowAutoHidePopup 내부에서 ActiveContent까지 맞추므로 여기서 다시 SetActiveContent를 호출하면
+      // 동일 키 재진입으로 토글-off가 발생할 수 있다.
       if (shown) MarkVisualDirtyAndRender( );
       else RequestRender( );
     }
