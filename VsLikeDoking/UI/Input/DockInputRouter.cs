@@ -391,6 +391,7 @@ namespace VsLikeDoking.UI.Input
     private void OnLostFocus(object? sender, EventArgs e)
     {
       var surface = _Surface;
+
       if (_SplitterDrag.IsCandidate)
         CancelSplitter(true);
 
@@ -402,7 +403,7 @@ namespace VsLikeDoking.UI.Input
 
       if (surface is null || surface.IsDisposed)
       {
-        RaiseRequest(DockInputRequest.DismissAutoHidePopup());
+        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
         return;
       }
 
@@ -412,7 +413,7 @@ namespace VsLikeDoking.UI.Input
       if (!surface.IsHandleCreated)
       {
         if (!surface.ContainsFocus)
-          RaiseRequest(DockInputRequest.DismissAutoHidePopup());
+          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
         return;
       }
 
@@ -423,11 +424,11 @@ namespace VsLikeDoking.UI.Input
     {
       try
       {
-        surface.BeginInvoke(new Action(() =>
+        surface.BeginInvoke( new Action( () =>
         {
           if (_Surface is null || _Surface.IsDisposed)
           {
-            RaiseRequest(DockInputRequest.DismissAutoHidePopup());
+            RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
             return;
           }
 
@@ -439,13 +440,13 @@ namespace VsLikeDoking.UI.Input
             return;
           }
 
-          RaiseRequest(DockInputRequest.DismissAutoHidePopup());
-        }));
+          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
+        } ) );
       }
       catch
       {
         if (!surface.ContainsFocus)
-          RaiseRequest(DockInputRequest.DismissAutoHidePopup());
+          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
       }
     }
 

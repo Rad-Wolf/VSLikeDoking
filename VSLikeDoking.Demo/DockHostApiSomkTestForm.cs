@@ -25,7 +25,6 @@ namespace VsLikeDoking.Demo.Forms
     private readonly SplitContainer _Split;
 
     private readonly Panel _SideTop;
-
     private readonly Label _AutoHideState;
 
     private readonly TextBox _LogSide;
@@ -73,14 +72,6 @@ namespace VsLikeDoking.Demo.Forms
       _SideTop = new Panel { Dock = DockStyle.Top, Height = 54 };
 
 
-
-
-
-
-
-
-
-
       _AutoHideState = new Label
       {
         Dock = DockStyle.Fill,
@@ -110,7 +101,6 @@ namespace VsLikeDoking.Demo.Forms
       _ToolSeq = 0;
 
       BuildMenu();
-
 
       RecreateHost();
       Log("[BOOT] Form constructed.");
