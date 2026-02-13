@@ -2423,7 +2423,6 @@ namespace VsLikeDoking.UI.Host
       var shown =
         TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key, "UI:AutoHideTab" )
         || TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key )
-        || TryInvokeByReflection( _Manager, "ToggleAutoHidePopup", key, "UI:AutoHideTab" )
         || TrySetManagerAutoHidePopup( key, visible: true );
 
       // ShowAutoHidePopup 내부에서 ActiveContent까지 맞추므로 여기서 다시 SetActiveContent를 호출하면

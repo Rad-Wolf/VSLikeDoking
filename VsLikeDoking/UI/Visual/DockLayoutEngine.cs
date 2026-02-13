@@ -602,6 +602,14 @@ namespace VsLikeDoking.UI.Visual
       var isHorizontal = edge is DockVisualTree.DockEdge.Top or DockVisualTree.DockEdge.Bottom;
       activeKey = NormalizeKey(activeKey);
 
+      var minExtent = GetMetricsInt("AutoHideTabMinExtent", 28);
+      if (minExtent < 8) minExtent = 8;
+
+      var maxExtent = GetMetricsInt("AutoHideTabMaxExtent", 120);
+      if (maxExtent < minExtent) maxExtent = minExtent;
+
+      tabExtent = MathEx.Clamp(tabExtent, minExtent, maxExtent);
+
       var built = 0;
 
       if (isHorizontal)
@@ -663,8 +671,7 @@ namespace VsLikeDoking.UI.Visual
         tree.AddAutoHideTab(stripIndex, key, tabBounds, isActive, popupSize);
         built++;
 
-        yCur += tabH;
-        if (gap > 0) yCur += gap;
+        y += tabExtent + gap;
       }
 
       return built;
@@ -682,7 +689,7 @@ namespace VsLikeDoking.UI.Visual
 
       // 세로 AutoHide는 split 폭이 얇기 때문에 tabExtent(가로 탭 기준값)으로 막으면
       // 탭이 생성되지 않아 제목이 '-'처럼 보이거나 strip만 남을 수 있다.
-      var minRequired = isHorizontal ? tabExtent : 8;
+      var minRequired = isHorizontal ? Math.Max(8, tabExtent) : 28;
       if (usable < minRequired) return false;
 
       foreach (var item in items)
