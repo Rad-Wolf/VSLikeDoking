@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Reflection;
 
@@ -105,6 +106,9 @@ namespace VsLikeDoking.UI.Visual
 
     private void BuildSplit(DockSplitNode node, Rectangle bounds, DockVisualTree tree)
     {
+      if (TryBuildAutoHideSideSplit(node, bounds, tree))
+        return;
+
       // AutoHide leaf가 비어있는 경우(아이템 없음/유효 키 없음)에는
       // split 비율을 그대로 쓰면 "빈 strip 공간"만 남는다.
       // 이 경우 반대편을 전체 bounds로 그려 시각적인 빈 레일을 제거한다.
@@ -170,6 +174,48 @@ namespace VsLikeDoking.UI.Visual
       tree.AddSplit(node, bounds, splitterBoundsH, DockVisualTree.SplitAxis.Horizontal, (float)ratio);
       VisitNode(node.First, firstBoundsH, tree);
       VisitNode(node.Second, secondBoundsH, tree);
+    }
+
+    private bool TryBuildAutoHideSideSplit(DockSplitNode node, Rectangle bounds, DockVisualTree tree)
+    {
+      DockAutoHideNode? stripNode = null;
+      DockNode? contentNode = null;
+
+      if (node.First is DockAutoHideNode ahFirst && node.Second is not DockAutoHideNode)
+      {
+        stripNode = ahFirst;
+        contentNode = node.Second;
+      }
+      else if (node.Second is DockAutoHideNode ahSecond && node.First is not DockAutoHideNode)
+      {
+        stripNode = ahSecond;
+        contentNode = node.First;
+      }
+
+      if (stripNode is null || contentNode is null) return false;
+
+      var side = stripNode.Side;
+      var edge = side switch
+      {
+        DockAutoHideSide.Left => DockVisualTree.DockEdge.Left,
+        DockAutoHideSide.Right => DockVisualTree.DockEdge.Right,
+        DockAutoHideSide.Top => DockVisualTree.DockEdge.Top,
+        _ => DockVisualTree.DockEdge.Bottom,
+      };
+
+      var thickness = GetMetricsInt("AutoHideStripThickness", _Metrics.TabStripHeight);
+      if (thickness < 1) thickness = Math.Max(1, _Metrics.TabStripHeight);
+
+      var stripBounds = ComputeEdgeBounds(bounds, edge, thickness);
+      var contentBounds = ShrinkBoundsByEdge(bounds, edge, thickness);
+
+      if (!stripBounds.IsEmpty)
+        VisitNode(stripNode, stripBounds, tree);
+
+      if (!contentBounds.IsEmpty)
+        VisitNode(contentNode, contentBounds, tree);
+
+      return true;
     }
 
     private static bool IsEffectivelyEmptyVisualLeaf(DockNode node)
@@ -584,18 +630,41 @@ namespace VsLikeDoking.UI.Visual
       var y = stripBounds.Y + pad;
       var yLimit = stripBounds.Bottom - pad;
 
+      var verticalItems = new List<(string Key, Size? PopupSize)>();
       foreach (var item in items)
       {
         if (!TryGetPersistKeyAndPopupSize(item, out var key, out var popupSize)) continue;
 
-        if (y + tabExtent > yLimit) break;
+        verticalItems.Add((key, popupSize));
+      }
 
-        var tabBounds = new Rectangle(stripBounds.X, y, stripBounds.Width, tabExtent);
+      if (verticalItems.Count == 0) return 0;
+
+      var available = Math.Max(0, yLimit - y);
+      if (available <= 0) return 0;
+
+      var each = Math.Max(1, available / verticalItems.Count);
+      var yCur = y;
+
+      for (int i = 0; i < verticalItems.Count; i++)
+      {
+        var key = verticalItems[i].Key;
+        var popupSize = verticalItems[i].PopupSize;
+
+        var remain = yLimit - yCur;
+        if (remain <= 0) break;
+
+        var tabH = (i == verticalItems.Count - 1) ? remain : Math.Min(each, remain);
+        if (tabH < 8) break;
+
+        var tabBounds = new Rectangle(stripBounds.X, yCur, stripBounds.Width, tabH);
         var isActive = !string.IsNullOrEmpty(activeKey) && string.Equals(activeKey, key, StringComparison.Ordinal);
 
         tree.AddAutoHideTab(stripIndex, key, tabBounds, isActive, popupSize);
         built++;
-        y += tabExtent + gap;
+
+        yCur += tabH;
+        if (gap > 0) yCur += gap;
       }
 
       return built;
@@ -611,7 +680,10 @@ namespace VsLikeDoking.UI.Visual
         ? Math.Max(0, stripBounds.Width - (pad * 2))
         : Math.Max(0, stripBounds.Height - (pad * 2));
 
-      if (usable < tabExtent) return false;
+      // 세로 AutoHide는 split 폭이 얇기 때문에 tabExtent(가로 탭 기준값)으로 막으면
+      // 탭이 생성되지 않아 제목이 '-'처럼 보이거나 strip만 남을 수 있다.
+      var minRequired = isHorizontal ? tabExtent : 8;
+      if (usable < minRequired) return false;
 
       foreach (var item in items)
       {

@@ -216,7 +216,9 @@ namespace VsLikeDoking.Rendering
 
         // 회전 후 좌표계에서 "가로"로 그리기 위해, 폭/높이를 뒤집은 가상의 텍스트 영역을 만든다.
         var w = Math.Max(1, bounds.Height);
-        var h = Math.Max(1, bounds.Width);
+        // 회전 후 텍스트 baseline/자모 영역이 잘리는 것을 막기 위해
+        // 얇은 strip에서도 최소 높이를 보장한다.
+        var h = Math.Max(16, bounds.Width + 8);
 
         var local = new RectangleF(-w / 2f, -h / 2f, w, h);
 

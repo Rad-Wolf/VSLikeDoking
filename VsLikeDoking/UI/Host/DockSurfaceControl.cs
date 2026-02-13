@@ -2300,19 +2300,7 @@ namespace VsLikeDoking.UI.Host
         var start = sv.TabStart;
         var end = sv.TabStart + sv.TabCount;
 
-        // 긴 strip 전체 배경을 항상 칠하면 "빈 세로 레일"처럼 보여서,
-        // 탭이 실제로 그려지는 영역 union만 배경으로 사용한다.
-        Rectangle stripPaintBounds = Rectangle.Empty;
-        for (int ti = start ; ti < end ; ti++)
-        {
-          if ((uint) ti >= (uint) _Tree.AutoHideTabs.Count) break;
-          var tb = _Tree.AutoHideTabs [ ti ].Bounds;
-          if (tb.IsEmpty) continue;
-          stripPaintBounds = stripPaintBounds.IsEmpty ? tb : Rectangle.Union(stripPaintBounds, tb);
-        }
-
-        if (!stripPaintBounds.IsEmpty)
-          _Renderer.DrawAutoHideStripBackground( g, stripPaintBounds );
+        _Renderer.DrawAutoHideStripBackground( g, sv.Bounds );
 
         for (int ti = start ; ti < end ; ti++)
         {
