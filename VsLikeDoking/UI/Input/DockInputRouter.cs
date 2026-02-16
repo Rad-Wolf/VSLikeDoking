@@ -390,6 +390,20 @@ namespace VsLikeDoking.UI.Input
         return;
       }
 
+      if ((Control.MouseButtons & MouseButtons.Left) != 0)
+        return;
+
+      if (_Tree is not null)
+      {
+        Point client;
+        try { client = surface.PointToClient(Control.MousePosition); }
+        catch { client = Point.Empty; }
+
+        var hit = DockHitTest.HitTest(_Tree, client);
+        if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+          return;
+      }
+
       var hostForm = surface.FindForm();
       var activeForm = Form.ActiveForm;
 
