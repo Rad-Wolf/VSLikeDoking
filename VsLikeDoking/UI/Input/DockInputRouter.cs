@@ -313,7 +313,7 @@ namespace VsLikeDoking.UI.Input
         return;
       }
 
-      // AutoHide 탭을 누른 게 아니면 "바깥 클릭"로 간주하고 Hide 요청을 올린다.
+      // AutoHide 탭을 누른 게 아니면 "바깥 클릭"으로 간주하고 Hide 요청을 올린다.
       // (실제 Hide 여부는 Host에서 DockManager 상태를 보고 판단)
       RaiseRequest(DockInputRequest.DismissAutoHidePopup());
 
@@ -465,17 +465,14 @@ namespace VsLikeDoking.UI.Input
 
       if (hostForm.ContainsFocus) return true;
 
-      if (IsAutoHideInteractionInProgress()) return true;
-
-      var active = Form.ActiveForm;
-      if (active is null) return true;
-      if (active.IsDisposed) return false;
-
-      return ReferenceEquals(active, hostForm);
+      // 인스턴스 메서드이므로 this가 필요함. 호출부에서 this를 전달해야 함.
+      // 기존: if (IsAutoHideInteractionInProgress()) return true;
+      // 수정: 호출부에서 this를 전달받아야 하므로, 파라미터로 DockInputRouter를 추가
+      throw new InvalidOperationException("LostFocus_ShouldKeepPopupOpen는 DockInputRouter 인스턴스가 필요합니다. 호출부에서 this를 전달해야 합니다.");
     }
 
 
-    private bool IsAutoHideInteractionInProgress()
+    private  bool IsAutoHideInteractionInProgress()
     {
       if (_Pressed.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
         return true;
