@@ -2549,14 +2549,11 @@ namespace VsLikeDoking.UI.Host
       if (DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
         return;
 
-      var hostForm = FindForm();
-      if (hostForm is not null && !hostForm.IsDisposed)
-      {
-        var activeForm = Form.ActiveForm;
-        var stillInHost = activeForm is null || ReferenceEquals(activeForm, hostForm);
-        if (stillInHost && IsDismissSuppressedByAutoHideInteraction())
-          return;
-      }
+      if ((Control.MouseButtons & MouseButtons.Left) != 0)
+        return;
+
+      if (IsDismissSuppressedByAutoHideInteraction())
+        return;
 
       TrySetManagerAutoHidePopup(_Manager.ActiveAutoHideKey ?? string.Empty, visible: false);
 
