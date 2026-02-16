@@ -616,7 +616,7 @@ namespace VsLikeDoking.UI.Visual
 
       tabExtent = MathEx.Clamp(tabExtent, minExtent, maxExtent);
 
-      var validItems = new List<(string key, Size popupSize)>();
+      var validItems = new List<(string key, Size? popupSize)>();
       foreach (var item in items)
       {
         if (TryGetPersistKeyAndPopupSize(item, out var key, out var popupSize))
