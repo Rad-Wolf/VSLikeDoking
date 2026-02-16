@@ -2350,8 +2350,8 @@ namespace VsLikeDoking.UI.Host
     {
       return edge switch
       {
-        DockVisualTree.DockEdge.Left => VsDockRenderer.AutoHideTextDirection.Rotate270,
-        DockVisualTree.DockEdge.Right => VsDockRenderer.AutoHideTextDirection.Rotate90,
+        DockVisualTree.DockEdge.Left => VsDockRenderer.AutoHideTextDirection.Rotate90,
+        DockVisualTree.DockEdge.Right => VsDockRenderer.AutoHideTextDirection.Rotate270,
         _ => VsDockRenderer.AutoHideTextDirection.Horizontal,
       };
     }
