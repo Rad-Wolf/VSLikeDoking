@@ -45,6 +45,9 @@ namespace VsLikeDoking.UI.Input
     /// <summary>현재 pressed 결과(왼쪽 버튼 기준)</summary>
     public DockHitTestResult Pressed => _Pressed;
 
+    /// <summary>현재 왼쪽 버튼 down 상태</summary>
+    public bool IsLeftButtonDown => _LeftDown;
+
     /// <summary>스플리터 드래깅 여부</summary>
     public bool IsSplitterDragging => _SplitterDrag.IsDragging;
 

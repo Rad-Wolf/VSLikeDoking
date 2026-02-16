@@ -64,6 +64,7 @@ namespace VsLikeDoking.UI.Host
 
     private bool _AutoHideActivating;
     private DateTime _AutoHideActivationHoldUntilUtc;
+    private bool _PendingDismissAutoHideOnMouseUp;
 
     // AutoHide Popup Host ========================================================================
 
@@ -220,6 +221,7 @@ namespace VsLikeDoking.UI.Host
 
       _AutoHideActivating = false;
       _AutoHideActivationHoldUntilUtc = DateTime.MinValue;
+      _PendingDismissAutoHideOnMouseUp = false;
 
       _AutoHidePopupHost = null;
       _AutoHidePopupKey = null;
@@ -335,6 +337,8 @@ namespace VsLikeDoking.UI.Host
     {
       if (_Manager is null) return;
       if (!_Manager.IsAutoHidePopupVisible) return;
+
+      _PendingDismissAutoHideOnMouseUp = false;
 
       _Manager.HideAutoHidePopup("UI:HostDeactivate");
       HideAutoHidePopupHost(removeView: false);
@@ -1541,6 +1545,13 @@ namespace VsLikeDoking.UI.Host
       _InputRouter.NotifyExternalMouseDown();
     }
 
+    private void OnForwardedMouseUp(object? sender, MouseEventArgs e)
+    {
+      if (e.Button != MouseButtons.Left) return;
+
+      TryFlushPendingAutoHideDismiss();
+    }
+
     private void OnForwardedKeyDown(object? sender, KeyEventArgs e)
     {
       if (e.KeyCode != Keys.Escape) return;
@@ -1597,6 +1608,7 @@ namespace VsLikeDoking.UI.Host
       if (!_ForwardedMouseDownHooks.Add(c)) return;
 
       c.MouseDown += OnForwardedMouseDown;
+      c.MouseUp += OnForwardedMouseUp;
       c.KeyDown += OnForwardedKeyDown;
       c.Disposed += OnForwardedDisposed;
 
@@ -1628,6 +1640,7 @@ namespace VsLikeDoking.UI.Host
       if (!_ForwardedMouseDownHooks.Remove(c)) return;
 
       try { c.MouseDown -= OnForwardedMouseDown; } catch { }
+      try { c.MouseUp -= OnForwardedMouseUp; } catch { }
       try { c.KeyDown -= OnForwardedKeyDown; } catch { }
       try { c.Disposed -= OnForwardedDisposed; } catch { }
 
@@ -1648,6 +1661,7 @@ namespace VsLikeDoking.UI.Host
         if (c is null) continue;
 
         try { c.MouseDown -= OnForwardedMouseDown; } catch { }
+        try { c.MouseUp -= OnForwardedMouseUp; } catch { }
         try { c.KeyDown -= OnForwardedKeyDown; } catch { }
         try { c.Disposed -= OnForwardedDisposed; } catch { }
         try { c.ControlAdded -= OnForwardedControlAdded; } catch { }
@@ -2402,6 +2416,12 @@ namespace VsLikeDoking.UI.Host
     private void OnSurfaceMouseUp(object? sender, MouseEventArgs e)
     {
       if (IsDisposed) return;
+      if (e.Button == MouseButtons.Left)
+      {
+        TryFlushPendingAutoHideDismiss();
+        return;
+      }
+
       if (e.Button != MouseButtons.Right) return;
       if (_Manager is null) return;
 
@@ -2546,6 +2566,9 @@ namespace VsLikeDoking.UI.Host
       if (_Manager is null) return;
       if (_AutoHideActivating) return;
 
+      // 새 활성화 시점에는 이전 클릭에서 남은 deferred dismiss를 폐기한다.
+      _PendingDismissAutoHideOnMouseUp = false;
+
       if (!TryResolveAutoHideTabIndices( stripIndex, tabIndex, out _, out var globalIndex ))
         return;
 
@@ -2588,7 +2611,13 @@ namespace VsLikeDoking.UI.Host
       if (_Manager is null) return;
       if (_AutoHideActivating) return;
 
-      if (DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
+      if (ShouldDeferDismissAutoHideByPointerState())
+      {
+        _PendingDismissAutoHideOnMouseUp = true;
+        return;
+      }
+
+      if (_Manager.IsAutoHidePopupVisible && DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
         return;
 
       if (!_Manager.IsAutoHidePopupVisible)
@@ -2606,6 +2635,41 @@ namespace VsLikeDoking.UI.Host
       HideAutoHidePopupHost(removeView: false);
 
       RequestRender();
+    }
+
+    private bool ShouldDeferDismissAutoHideByPointerState()
+    {
+      if (Control.MouseButtons.HasFlag(MouseButtons.Left))
+        return true;
+
+      if (_InputRouter.IsLeftButtonDown)
+        return true;
+
+      if (_InputRouter.Pressed.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+        return true;
+
+      if (_InputRouter.Hover.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+        return true;
+
+      return false;
+    }
+
+    private void TryFlushPendingAutoHideDismiss()
+    {
+      if (!_PendingDismissAutoHideOnMouseUp) return;
+
+      if (_Manager is null)
+      {
+        _PendingDismissAutoHideOnMouseUp = false;
+        return;
+      }
+
+      if (Control.MouseButtons.HasFlag(MouseButtons.Left) || _InputRouter.IsLeftButtonDown)
+        return;
+
+      _PendingDismissAutoHideOnMouseUp = false;
+
+      HandleDismissAutoHidePopup();
     }
 
 
