@@ -390,6 +390,8 @@ namespace VsLikeDoking.UI.Input
 
     private void OnLostFocus ( object? sender, EventArgs e )
     {
+      var surface = _Surface;
+
       if (_SplitterDrag.IsCandidate)
         CancelSplitter( true );
 
@@ -399,12 +401,75 @@ namespace VsLikeDoking.UI.Input
       // 포커스가 나가면 hover도 지우는 편이 안전
       SetHover( DockHitTestResult.None( ) );
 
-      // 자식 컨트롤로 포커스가 이동한 경우(= Surface 내부 포커스 유지)는 닫지 않는다.
-      // (AutoHide 팝업 컨텐츠 클릭 시 즉시 닫히는 버그 방지)
-      if (_Surface is not null && _Surface.ContainsFocus) return;
+      if (surface is null || surface.IsDisposed)
+      {
+        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
+        return;
+      }
 
-      // Surface 밖으로 포커스가 나가면 AutoHide 팝업은 닫는 쪽이 안전
-      RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
+      var hostForm = surface.FindForm();
+      if (ShouldKeepAutoHidePopupForHostFocus(hostForm))
+        return;
+
+      // Focus 전환 타이밍(특히 AutoHide 탭 클릭 직후)에는 LostFocus가 먼저 오고,
+      // 곧바로 Surface 자식(팝업 호스트/뷰)로 포커스가 이동할 수 있다.
+      // 1틱 지연 후 실제 포커스 상태를 확인해서, Surface 밖으로 나간 경우에만 닫는다.
+      if (!surface.IsHandleCreated)
+      {
+        if (!surface.ContainsFocus)
+          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
+        return;
+      }
+
+      ScheduleAutoHideDismissIfStillUnfocused(surface, retryOnce: true);
+    }
+
+    private void ScheduleAutoHideDismissIfStillUnfocused(Control surface, bool retryOnce)
+    {
+      try
+      {
+        surface.BeginInvoke( new Action( () =>
+        {
+          var s = _Surface;
+          if (s is null || s.IsDisposed)
+          {
+            RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
+            return;
+          }
+
+          if (s.ContainsFocus) return;
+
+          var hostForm = s.FindForm();
+          if (ShouldKeepAutoHidePopupForHostFocus(hostForm))
+            return;
+
+          if (retryOnce)
+          {
+            ScheduleAutoHideDismissIfStillUnfocused(s, retryOnce: false);
+            return;
+          }
+
+          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
+        } ) );
+      }
+      catch
+      {
+        if (!surface.ContainsFocus)
+          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
+      }
+    }
+
+    private bool ShouldKeepAutoHidePopupForHostFocus(Form? hostForm)
+    {
+      if (hostForm is null || hostForm.IsDisposed) return false;
+
+      if (hostForm.ContainsFocus) return true;
+
+      var active = Form.ActiveForm;
+      if (active is null) return true;
+      if (active.IsDisposed) return false;
+
+      return ReferenceEquals(active, hostForm);
     }
 
     private void OnKeyDown ( object? sender, KeyEventArgs e )
