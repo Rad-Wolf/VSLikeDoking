@@ -1591,13 +1591,6 @@ namespace VsLikeDoking.UI.Host
       TryFlushPendingAutoHideDismiss();
     }
 
-    private void OnForwardedMouseUp(object? sender, MouseEventArgs e)
-    {
-      if (e.Button != MouseButtons.Left) return;
-
-      TryFlushPendingAutoHideDismiss();
-    }
-
     private void OnForwardedKeyDown(object? sender, KeyEventArgs e)
     {
       if (e.KeyCode != Keys.Escape) return;
