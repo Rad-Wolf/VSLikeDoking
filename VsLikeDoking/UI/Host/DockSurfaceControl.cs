@@ -2521,14 +2521,11 @@ namespace VsLikeDoking.UI.Host
       }
 
       _AutoHideActivating = true;
-      _AutoHideActivationHoldUntilUtc = DateTime.UtcNow.AddMilliseconds(700);
+      _AutoHideActivationHoldUntilUtc = DateTime.UtcNow.AddMilliseconds(250);
       try
       {
         // "Show" 우선(토글은 상태 불일치 시 반대로 동작 가능)
-        var shown =
-          TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key, "UI:AutoHideTab" )
-          || TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key )
-          || TrySetManagerAutoHidePopup( key, visible: true );
+        var shown = _Manager.ShowAutoHidePopup( key, "UI:AutoHideTab" );
 
         // ShowAutoHidePopup 내부에서 ActiveContent까지 맞추므로 여기서 다시 SetActiveContent를 호출하면
         // 동일 키 재진입으로 토글-off가 발생할 수 있다.
@@ -2549,16 +2546,16 @@ namespace VsLikeDoking.UI.Host
       if (_Manager.IsAutoHidePopupVisible && DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
         return;
 
-      var hostForm = FindForm();
-      if (hostForm is not null && !hostForm.IsDisposed)
+      if (!_Manager.IsAutoHidePopupVisible)
       {
-        var activeForm = Form.ActiveForm;
-        var stillInHost = activeForm is null || ReferenceEquals(activeForm, hostForm);
-        if (stillInHost && IsDismissSuppressedByAutoHideInteraction())
-          return;
+        HideAutoHidePopupHost(removeView: false);
+        return;
       }
 
-      TrySetManagerAutoHidePopup(_Manager.ActiveAutoHideKey ?? string.Empty, visible: false);
+      if (IsDismissSuppressedByAutoHideInteraction())
+        return;
+
+      _Manager.HideAutoHidePopup("UI:AutoHideDismiss");
 
       // UI 즉시 숨김(Manager 이벤트 지연/누락 대비)
       HideAutoHidePopupHost(removeView: false);
@@ -2569,15 +2566,19 @@ namespace VsLikeDoking.UI.Host
 
     private bool IsDismissSuppressedByAutoHideInteraction()
     {
-      if (_InputRouter.Pressed.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
-        return true;
-
-      if (_InputRouter.Hover.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
-        return true;
-
       Point client;
       try { client = PointToClient(Control.MousePosition); }
       catch { return false; }
+
+      if (_AutoHidePopupHost is not null && !_AutoHidePopupHost.IsDisposed)
+      {
+        Rectangle popupBounds;
+        try { popupBounds = _AutoHidePopupHost.Bounds; }
+        catch { popupBounds = Rectangle.Empty; }
+
+        if (!popupBounds.IsEmpty && popupBounds.Contains(client))
+          return true;
+      }
 
       var hit = DockHitTest.HitTest(_Tree, client);
       if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
