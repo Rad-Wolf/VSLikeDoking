@@ -65,6 +65,8 @@ namespace VsLikeDoking.UI.Host
     private bool _AutoHideActivating;
     private DateTime _AutoHideActivationHoldUntilUtc;
     private bool _PendingDismissAutoHideOnMouseUp;
+    private const int AutoHidePopupContentPadding = 4;
+    private const int AutoHideResizeGripThickness = 6;
 
     // AutoHide Popup Host ========================================================================
 
@@ -633,6 +635,7 @@ namespace VsLikeDoking.UI.Host
           Visible = false,
           TabStop = false,
           BackColor = Color.Transparent,
+          Padding = new Padding(AutoHidePopupContentPadding),
         };
       }
 
@@ -843,10 +846,12 @@ namespace VsLikeDoking.UI.Host
 
       try { _AutoHidePopupHost.Bounds = rc; } catch { }
 
+      UpdateAutoHidePopupHostPadding(side);
+
       // (PATCH) Host 크기 바뀐 직후 View가 0 사이즈로 남는 것 방지
       if (_AutoHidePopupView is not null && !_AutoHidePopupView.IsDisposed && ReferenceEquals(_AutoHidePopupView.Parent, _AutoHidePopupHost))
       {
-        try { _AutoHidePopupView.Bounds = _AutoHidePopupHost.ClientRectangle; } catch { }
+        try { _AutoHidePopupView.Bounds = _AutoHidePopupHost.DisplayRectangle; } catch { }
       }
 
       UpdateAutoHideResizeGripLayout(side);
@@ -866,8 +871,6 @@ namespace VsLikeDoking.UI.Host
         return;
       }
 
-      const int GripThickness = 6;
-
       var rc = _AutoHidePopupHost.ClientRectangle;
       if (rc.Width <= 0 || rc.Height <= 0)
       {
@@ -879,22 +882,22 @@ namespace VsLikeDoking.UI.Host
 
       if (side == DockAutoHideSide.Left)
       {
-        gripRc = new Rectangle(Math.Max(0, rc.Width - GripThickness), 0, GripThickness, rc.Height);
+        gripRc = new Rectangle(Math.Max(0, rc.Width - AutoHideResizeGripThickness), 0, AutoHideResizeGripThickness, rc.Height);
         _AutoHideResizeGrip.Cursor = Cursors.SizeWE;
       }
       else if (side == DockAutoHideSide.Right)
       {
-        gripRc = new Rectangle(0, 0, GripThickness, rc.Height);
+        gripRc = new Rectangle(0, 0, AutoHideResizeGripThickness, rc.Height);
         _AutoHideResizeGrip.Cursor = Cursors.SizeWE;
       }
       else if (side == DockAutoHideSide.Top)
       {
-        gripRc = new Rectangle(0, Math.Max(0, rc.Height - GripThickness), rc.Width, GripThickness);
+        gripRc = new Rectangle(0, Math.Max(0, rc.Height - AutoHideResizeGripThickness), rc.Width, AutoHideResizeGripThickness);
         _AutoHideResizeGrip.Cursor = Cursors.SizeNS;
       }
       else
       {
-        gripRc = new Rectangle(0, 0, rc.Width, GripThickness);
+        gripRc = new Rectangle(0, 0, rc.Width, AutoHideResizeGripThickness);
         _AutoHideResizeGrip.Cursor = Cursors.SizeNS;
       }
 
@@ -1071,7 +1074,7 @@ namespace VsLikeDoking.UI.Host
         view.Enabled = true;
 
         if (_AutoHidePopupHost.ClientSize.Width > 0 && _AutoHidePopupHost.ClientSize.Height > 0)
-          view.Bounds = _AutoHidePopupHost.ClientRectangle;
+          view.Bounds = _AutoHidePopupHost.DisplayRectangle;
 
         // 그립이 항상 위
         if (_AutoHideResizeGrip is not null && !_AutoHideResizeGrip.IsDisposed)
@@ -1079,6 +1082,28 @@ namespace VsLikeDoking.UI.Host
 
         _AutoHidePopupHost.PerformLayout();
       }
+      catch { }
+    }
+
+    private void UpdateAutoHidePopupHostPadding(DockAutoHideSide side)
+    {
+      if (_AutoHidePopupHost is null || _AutoHidePopupHost.IsDisposed) return;
+
+      var left = AutoHidePopupContentPadding;
+      var top = AutoHidePopupContentPadding;
+      var right = AutoHidePopupContentPadding;
+      var bottom = AutoHidePopupContentPadding;
+
+      if (side == DockAutoHideSide.Left)
+        right += AutoHideResizeGripThickness;
+      else if (side == DockAutoHideSide.Right)
+        left += AutoHideResizeGripThickness;
+      else if (side == DockAutoHideSide.Top)
+        bottom += AutoHideResizeGripThickness;
+      else
+        top += AutoHideResizeGripThickness;
+
+      try { _AutoHidePopupHost.Padding = new Padding(left, top, right, bottom); }
       catch { }
     }
 
@@ -2666,6 +2691,14 @@ namespace VsLikeDoking.UI.Host
 
       if (Control.MouseButtons.HasFlag(MouseButtons.Left) || _InputRouter.IsLeftButtonDown)
         return;
+
+      // AutoHide 탭 전환/팝업 내부 상호작용 중 발생했던 pending dismiss는 release 시 폐기한다.
+      // (전환 완료 직후 새 팝업을 다시 닫아 진동하는 stale dismiss 방지)
+      if (IsDismissSuppressedByAutoHideInteraction())
+      {
+        _PendingDismissAutoHideOnMouseUp = false;
+        return;
+      }
 
       _PendingDismissAutoHideOnMouseUp = false;
 
