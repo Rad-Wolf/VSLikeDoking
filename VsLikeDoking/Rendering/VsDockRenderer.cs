@@ -168,13 +168,18 @@ namespace VsLikeDoking.Rendering
       g.FillRectangle(_Cache.GetBrush(back), bounds);
       g.DrawRectangle(_Cache.GetPen(border, 1f, PenAlignment.Inset), bounds.X, bounds.Y, bounds.Width - 1, bounds.Height - 1);
 
-      var textRect = Rectangle.Inflate(bounds, -6, 0);
+      Rectangle textRect;
 
       if (textDirection == AutoHideTextDirection.Horizontal)
       {
+        textRect = Rectangle.Inflate(bounds, -6, 0);
         DrawTabText(g, textRect, text, textColor);
         return;
       }
+
+      // 세로 텍스트는 strip 폭이 얇아 x-padding을 크게 주면 한 글자만 남을 수 있다.
+      // 회전 텍스트는 y축 위주로 패딩을 주고, x축은 최소만 줄인다.
+      textRect = Rectangle.Inflate(bounds, -2, -4);
 
       DrawAutoHideTabTextRotated(g, textRect, text, textColor, textDirection);
     }
@@ -211,7 +216,9 @@ namespace VsLikeDoking.Rendering
 
         // 회전 후 좌표계에서 "가로"로 그리기 위해, 폭/높이를 뒤집은 가상의 텍스트 영역을 만든다.
         var w = Math.Max(1, bounds.Height);
-        var h = Math.Max(1, bounds.Width);
+        // 회전 후 텍스트 baseline/자모 영역이 잘리는 것을 막기 위해
+        // 얇은 strip에서도 최소 높이를 보장한다.
+        var h = Math.Max(16, bounds.Width + 8);
 
         var local = new RectangleF(-w / 2f, -h / 2f, w, h);
 
