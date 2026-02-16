@@ -310,9 +310,9 @@ namespace VsLikeDoking.UI.Input
       SetPressed(hit);
 
       // 탭 전환 루프 방지:
-      // AutoHide 탭은 MouseDown 즉시 활성화하지 않고 MouseUp 클릭 확정 시 활성화한다.
-      // (누르는 순간 포커스 전환/지연 dismiss가 교차하며 열림/닫힘 진동이 생기는 케이스 차단)
-      if (hit.Kind == DockVisualTree.RegionKind.AutoHideTab)
+      // AutoHide 탭/스트립을 누르는 동안은 dismiss를 올리지 않는다.
+      // (탭 전환 중 hit-test가 strip으로 흔들려도 close 요청이 끼어들지 않도록)
+      if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
         return;
 
       // AutoHide 탭을 누른 게 아니면 "바깥 클릭"으로 간주하고 Hide 요청을 올린다.
@@ -391,11 +391,6 @@ namespace VsLikeDoking.UI.Input
     }
 
     private bool IsWithinAutoHideSwitchGuardWindow()
-    {
-      return DateTime.UtcNow < _AutoHideSwitchGuardUntilUtc;
-    }
-
-    private void OnLostFocus(object? sender, EventArgs e)
     {
       if (_SplitterDrag.IsCandidate)
         CancelSplitter(true);
