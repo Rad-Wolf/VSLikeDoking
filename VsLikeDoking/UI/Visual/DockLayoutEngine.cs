@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Reflection;
 
@@ -105,6 +106,33 @@ namespace VsLikeDoking.UI.Visual
 
     private void BuildSplit(DockSplitNode node, Rectangle bounds, DockVisualTree tree)
     {
+      if (TryBuildAutoHideSideSplit(node, bounds, tree))
+        return;
+
+      // AutoHide leaf가 비어있는 경우(아이템 없음/유효 키 없음)에는
+      // split 비율을 그대로 쓰면 "빈 strip 공간"만 남는다.
+      // 이 경우 반대편을 전체 bounds로 그려 시각적인 빈 레일을 제거한다.
+      var collapseFirst = IsEffectivelyEmptyVisualLeaf(node.First);
+      var collapseSecond = IsEffectivelyEmptyVisualLeaf(node.Second);
+
+      if (collapseFirst && !collapseSecond)
+      {
+        VisitNode(node.Second, bounds, tree);
+        return;
+      }
+
+      if (!collapseFirst && collapseSecond)
+      {
+        VisitNode(node.First, bounds, tree);
+        return;
+      }
+
+      if (collapseFirst && collapseSecond)
+      {
+        tree.AddEmptyRegion(bounds);
+        return;
+      }
+
       var thickness = _Metrics.SplitterVisualThickness;
       if (thickness < 1) thickness = 1;
 
@@ -146,6 +174,78 @@ namespace VsLikeDoking.UI.Visual
       tree.AddSplit(node, bounds, splitterBoundsH, DockVisualTree.SplitAxis.Horizontal, (float)ratio);
       VisitNode(node.First, firstBoundsH, tree);
       VisitNode(node.Second, secondBoundsH, tree);
+    }
+
+    private bool TryBuildAutoHideSideSplit(DockSplitNode node, Rectangle bounds, DockVisualTree tree)
+    {
+      DockAutoHideNode? stripNode = null;
+      DockNode? contentNode = null;
+
+      if (node.First is DockAutoHideNode ahFirst && node.Second is not DockAutoHideNode)
+      {
+        stripNode = ahFirst;
+        contentNode = node.Second;
+      }
+      else if (node.Second is DockAutoHideNode ahSecond && node.First is not DockAutoHideNode)
+      {
+        stripNode = ahSecond;
+        contentNode = node.First;
+      }
+
+      if (stripNode is null || contentNode is null) return false;
+
+      var side = stripNode.Side;
+      var edge = side switch
+      {
+        DockAutoHideSide.Left => DockVisualTree.DockEdge.Left,
+        DockAutoHideSide.Right => DockVisualTree.DockEdge.Right,
+        DockAutoHideSide.Top => DockVisualTree.DockEdge.Top,
+        _ => DockVisualTree.DockEdge.Bottom,
+      };
+
+      var thickness = GetMetricsInt("AutoHideStripThickness", _Metrics.TabStripHeight);
+      if (thickness < 1) thickness = Math.Max(1, _Metrics.TabStripHeight);
+
+      var stripBounds = ComputeEdgeBounds(bounds, edge, thickness);
+      var contentBounds = ShrinkBoundsByEdge(bounds, edge, thickness);
+
+      if (!stripBounds.IsEmpty)
+        VisitNode(stripNode, stripBounds, tree);
+
+      if (!contentBounds.IsEmpty)
+        VisitNode(contentNode, contentBounds, tree);
+
+      return true;
+    }
+
+    private static bool IsEffectivelyEmptyVisualLeaf(DockNode node)
+    {
+      if (node is DockAutoHideNode ah)
+      {
+        var items = ah.Items;
+        if (items is null || items.Count == 0) return true;
+
+        for (int i = 0; i < items.Count; i++)
+        {
+          var key = NormalizeKey(items[i].PersistKey);
+          if (key is not null) return false;
+        }
+
+        return true;
+      }
+
+      // 비어 있는 ToolWindow 그룹도 화면상으로는 의미 없는 공간이므로 split에서 접는다.
+      if (node is DockGroupNode g)
+        return g.ContentKind == DockContentKind.ToolWindow && g.Items.Count == 0;
+
+      // 비어 있는 브랜치 전파: 자식이 모두 비어 있으면 상위 split도 비어 있다고 본다.
+      if (node is DockSplitNode s)
+        return IsEffectivelyEmptyVisualLeaf(s.First) && IsEffectivelyEmptyVisualLeaf(s.Second);
+
+      if (node is DockFloatingNode f)
+        return IsEffectivelyEmptyVisualLeaf(f.Root);
+
+      return false;
     }
 
     private void BuildGroup(DockGroupNode node, Rectangle bounds, DockVisualTree tree)
@@ -293,8 +393,6 @@ namespace VsLikeDoking.UI.Visual
       var stripBounds = ComputeEdgeBounds(bounds, edge, thickness);
       if (!stripBounds.IsEmpty)
       {
-        var stripIndex = tree.AddAutoHideStrip(edge, stripBounds);
-
         var activeKey =
           TryGetStringProperty(nt, node, "ActiveKey")
           ?? TryGetStringProperty(nt, node, "SelectedKey");
@@ -304,22 +402,30 @@ namespace VsLikeDoking.UI.Visual
         IEnumerable? items = null;
         try { items = node.Items; } catch { items = null; }
 
-        if (items is not null)
+        var tabExtent = GetMetricsInt("AutoHideTabExtent", Math.Max(48, _Metrics.TabMinWidth));
+        if (tabExtent < 8) tabExtent = 8;
+
+        var gap = GetMetricsInt("AutoHideTabGap", _Metrics.TabGap);
+        if (gap < 0) gap = 0;
+
+        var pad = GetMetricsInt("AutoHideStripPadding", 0);
+        if (pad < 0) pad = 0;
+
+        if (items is not null && HasRenderableAutoHideTab(items, edge, stripBounds, tabExtent, pad))
         {
-          var tabExtent = GetMetricsInt("AutoHideTabExtent", Math.Max(48, _Metrics.TabMinWidth));
-          if (tabExtent < 8) tabExtent = 8;
+          var stripIndex = tree.AddAutoHideStrip(edge, stripBounds);
+          var builtCount = BuildAutoHideTabs(tree, stripIndex, edge, stripBounds, items, activeKey, tabExtent, gap, pad);
 
-          var gap = GetMetricsInt("AutoHideTabGap", _Metrics.TabGap);
-          if (gap < 0) gap = 0;
-
-          var pad = GetMetricsInt("AutoHideStripPadding", 0);
-          if (pad < 0) pad = 0;
-
-          BuildAutoHideTabs(tree, stripIndex, edge, stripBounds, items, activeKey, tabExtent, gap, pad);
+          // 탭이 실제로 하나도 그려지지 않았으면 strip 두께를 소비하지 않는다.
+          if (builtCount <= 0) thickness = 0;
+        }
+        else
+        {
+          thickness = 0;
         }
       }
 
-      var inner = ShrinkBoundsByEdge(bounds, edge, thickness);
+      var inner = thickness > 0 ? ShrinkBoundsByEdge(bounds, edge, thickness) : bounds;
       if (inner.IsEmpty) return;
 
       var child =
@@ -464,6 +570,7 @@ namespace VsLikeDoking.UI.Visual
 
         var stripBounds = ComputeEdgeBounds(bounds, edge, thickness);
         if (stripBounds.IsEmpty) continue;
+        if (!HasRenderableAutoHideTab(items, edge, stripBounds, tabExtent, pad)) continue;
 
         var stripIndex = tree.AddAutoHideStrip(edge, stripBounds);
 
@@ -474,14 +581,14 @@ namespace VsLikeDoking.UI.Visual
 
         activeKey = NormalizeKey(activeKey);
 
-        BuildAutoHideTabs(tree, stripIndex, edge, stripBounds, items, activeKey, tabExtent, gap, pad);
-        anyBuilt = true;
+        var builtCount = BuildAutoHideTabs(tree, stripIndex, edge, stripBounds, items, activeKey, tabExtent, gap, pad);
+        anyBuilt |= builtCount > 0;
       }
 
       return anyBuilt;
     }
 
-    private void BuildAutoHideTabs(
+    private int BuildAutoHideTabs(
       DockVisualTree tree,
       int stripIndex,
       DockVisualTree.DockEdge edge,
@@ -495,44 +602,124 @@ namespace VsLikeDoking.UI.Visual
       var isHorizontal = edge is DockVisualTree.DockEdge.Top or DockVisualTree.DockEdge.Bottom;
       activeKey = NormalizeKey(activeKey);
 
+      var minExtent = GetMetricsInt("AutoHideTabMinExtent", 28);
+      if (minExtent < 8) minExtent = 8;
+
+      var maxExtent = GetMetricsInt("AutoHideTabMaxExtent", 120);
+      if (maxExtent < minExtent) maxExtent = minExtent;
+
+      var verticalMinExtent = GetMetricsInt("AutoHideVerticalTabMinExtent", 20);
+      if (verticalMinExtent < 12) verticalMinExtent = 12;
+
+      var verticalMaxExtent = GetMetricsInt("AutoHideVerticalTabMaxExtent", 72);
+      if (verticalMaxExtent < verticalMinExtent) verticalMaxExtent = verticalMinExtent;
+
+      tabExtent = MathEx.Clamp(tabExtent, minExtent, maxExtent);
+
+      var validItems = new List<(string key, Size? popupSize)>();
+      foreach (var item in items)
+      {
+        if (TryGetPersistKeyAndPopupSize(item, out var key, out var popupSize))
+          validItems.Add((key, popupSize));
+      }
+
+      if (validItems.Count == 0) return 0;
+
+      var built = 0;
+
       if (isHorizontal)
       {
         var x = stripBounds.X + pad;
         var limit = stripBounds.Right - pad;
 
-        foreach (var item in items)
+        for (int i = 0; i < validItems.Count; i++)
         {
-          if (!TryGetPersistKeyAndPopupSize(item, out var key, out var popupSize)) continue;
-
+          var item = validItems[i];
           if (x + tabExtent > limit) break;
 
           var tabBounds = new Rectangle(x, stripBounds.Y, tabExtent, stripBounds.Height);
-          var isActive = !string.IsNullOrEmpty(activeKey) && string.Equals(activeKey, key, StringComparison.Ordinal);
+          var isActive = !string.IsNullOrEmpty(activeKey) && string.Equals(activeKey, item.key, StringComparison.Ordinal);
 
-          // ContentKey는 string(그리기/히트테스트 유지), PopupSize는 별도 전달(메타 캐시 목적)
-          tree.AddAutoHideTab(stripIndex, key, tabBounds, isActive, popupSize);
+          tree.AddAutoHideTab(stripIndex, item.key, tabBounds, isActive, item.popupSize);
+          built++;
           x += tabExtent + gap;
         }
 
-        return;
+        return built;
       }
 
       var y = stripBounds.Y + pad;
       var yLimit = stripBounds.Bottom - pad;
+      var usable = Math.Max(0, yLimit - y);
+
+      if (usable <= 0) return 0;
+
+      var perTab = tabExtent;
+      if (validItems.Count > 0)
+      {
+        var tabCount = validItems.Count;
+        var totalGap = gap * Math.Max(0, tabCount - 1);
+
+        if (totalGap >= usable)
+        {
+          gap = 0;
+          totalGap = 0;
+        }
+
+        var fitExtent = (usable - totalGap) / tabCount;
+        if (fitExtent <= 0) return 0;
+
+        var maxByFit = Math.Min(verticalMaxExtent, fitExtent);
+        if (maxByFit < verticalMinExtent)
+          perTab = Math.Max(12, maxByFit);
+        else
+          perTab = Math.Min(tabExtent, maxByFit);
+      }
+
+      perTab = MathEx.Clamp(perTab, 12, verticalMaxExtent);
+
+      for (int i = 0; i < validItems.Count; i++)
+      {
+        var item = validItems[i];
+        if (y + perTab > yLimit) break;
+
+        var tabBounds = new Rectangle(stripBounds.X, y, stripBounds.Width, perTab);
+        var isActive = !string.IsNullOrEmpty(activeKey) && string.Equals(activeKey, item.key, StringComparison.Ordinal);
+
+        tree.AddAutoHideTab(stripIndex, item.key, tabBounds, isActive, item.popupSize);
+        built++;
+
+        y += perTab + gap;
+      }
+
+      return built;
+    }
+
+
+    private bool HasRenderableAutoHideTab(IEnumerable items, DockVisualTree.DockEdge edge, Rectangle stripBounds, int tabExtent, int pad)
+    {
+      if (items is null) return false;
+
+      var isHorizontal = edge is DockVisualTree.DockEdge.Top or DockVisualTree.DockEdge.Bottom;
+      var usable = isHorizontal
+        ? Math.Max(0, stripBounds.Width - (pad * 2))
+        : Math.Max(0, stripBounds.Height - (pad * 2));
+
+      var minRequired = isHorizontal
+        ? Math.Max(8, GetMetricsInt("AutoHideTabMinExtent", 28))
+        : Math.Max(12, GetMetricsInt("AutoHideVerticalTabMinExtent", 20));
+
+      if (usable < minRequired) return false;
 
       foreach (var item in items)
       {
-        if (!TryGetPersistKeyAndPopupSize(item, out var key, out var popupSize)) continue;
-
-        if (y + tabExtent > yLimit) break;
-
-        var tabBounds = new Rectangle(stripBounds.X, y, stripBounds.Width, tabExtent);
-        var isActive = !string.IsNullOrEmpty(activeKey) && string.Equals(activeKey, key, StringComparison.Ordinal);
-
-        tree.AddAutoHideTab(stripIndex, key, tabBounds, isActive, popupSize);
-        y += tabExtent + gap;
+        if (TryGetPersistKeyAndPopupSize(item, out _, out _))
+          return true;
       }
+
+      return false;
     }
+
 
     private static Rectangle ComputeEdgeBounds(Rectangle bounds, DockVisualTree.DockEdge edge, int thickness)
     {
