@@ -65,6 +65,7 @@ namespace VsLikeDoking.UI.Host
     private bool _AutoHideActivating;
     private DateTime _AutoHideActivationHoldUntilUtc;
     private bool _PendingDismissAutoHideOnMouseUp;
+    private bool _PendingDismissStartedFromAutoHideInteraction;
     private const int AutoHidePopupContentPadding = 4;
     private const int AutoHideResizeGripThickness = 6;
 
@@ -224,6 +225,7 @@ namespace VsLikeDoking.UI.Host
       _AutoHideActivating = false;
       _AutoHideActivationHoldUntilUtc = DateTime.MinValue;
       _PendingDismissAutoHideOnMouseUp = false;
+      _PendingDismissStartedFromAutoHideInteraction = false;
 
       _AutoHidePopupHost = null;
       _AutoHidePopupKey = null;
@@ -341,6 +343,7 @@ namespace VsLikeDoking.UI.Host
       if (!_Manager.IsAutoHidePopupVisible) return;
 
       _PendingDismissAutoHideOnMouseUp = false;
+      _PendingDismissStartedFromAutoHideInteraction = false;
 
       _Manager.HideAutoHidePopup("UI:HostDeactivate");
       HideAutoHidePopupHost(removeView: false);
@@ -2593,6 +2596,7 @@ namespace VsLikeDoking.UI.Host
 
       // 새 활성화 시점에는 이전 클릭에서 남은 deferred dismiss를 폐기한다.
       _PendingDismissAutoHideOnMouseUp = false;
+      _PendingDismissStartedFromAutoHideInteraction = false;
 
       if (!TryResolveAutoHideTabIndices( stripIndex, tabIndex, out _, out var globalIndex ))
         return;
@@ -2638,6 +2642,7 @@ namespace VsLikeDoking.UI.Host
 
       if (ShouldDeferDismissAutoHideByPointerState())
       {
+        _PendingDismissStartedFromAutoHideInteraction = IsDismissSuppressedByAutoHideInteraction();
         _PendingDismissAutoHideOnMouseUp = true;
         return;
       }
@@ -2686,21 +2691,32 @@ namespace VsLikeDoking.UI.Host
       if (_Manager is null)
       {
         _PendingDismissAutoHideOnMouseUp = false;
+        _PendingDismissStartedFromAutoHideInteraction = false;
         return;
       }
 
       if (Control.MouseButtons.HasFlag(MouseButtons.Left) || _InputRouter.IsLeftButtonDown)
         return;
 
-      // AutoHide 탭 전환/팝업 내부 상호작용 중 발생했던 pending dismiss는 release 시 폐기한다.
-      // (전환 완료 직후 새 팝업을 다시 닫아 진동하는 stale dismiss 방지)
+      // defer가 AutoHide 상호작용 중에 시작된 경우 release에서 mouse 위치와 무관하게 폐기한다.
+      // (탭 전환 도중 내려온 stale dismiss가 새 팝업을 닫는 진동 방지)
+      if (_PendingDismissStartedFromAutoHideInteraction)
+      {
+        _PendingDismissAutoHideOnMouseUp = false;
+        _PendingDismissStartedFromAutoHideInteraction = false;
+        return;
+      }
+
+      // release 시점에도 AutoHide 상호작용 컨텍스트라면 pending dismiss는 폐기한다.
       if (IsDismissSuppressedByAutoHideInteraction())
       {
         _PendingDismissAutoHideOnMouseUp = false;
+        _PendingDismissStartedFromAutoHideInteraction = false;
         return;
       }
 
       _PendingDismissAutoHideOnMouseUp = false;
+      _PendingDismissStartedFromAutoHideInteraction = false;
 
       HandleDismissAutoHidePopup();
     }
