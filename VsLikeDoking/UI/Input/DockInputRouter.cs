@@ -109,7 +109,6 @@ namespace VsLikeDoking.UI.Input
       surface.MouseUp += OnMouseUp;
       surface.MouseLeave += OnMouseLeave;
       surface.MouseCaptureChanged += OnMouseCaptureChanged;
-      surface.LostFocus += OnLostFocus;
       surface.KeyDown += OnKeyDown;
     }
 
@@ -125,7 +124,6 @@ namespace VsLikeDoking.UI.Input
       s.MouseUp -= OnMouseUp;
       s.MouseLeave -= OnMouseLeave;
       s.MouseCaptureChanged -= OnMouseCaptureChanged;
-      s.LostFocus -= OnLostFocus;
       s.KeyDown -= OnKeyDown;
 
       _Surface = null;
