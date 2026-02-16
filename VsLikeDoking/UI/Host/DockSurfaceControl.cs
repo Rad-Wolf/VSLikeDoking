@@ -63,6 +63,7 @@ namespace VsLikeDoking.UI.Host
     private Point _OvLineP1;
 
     private bool _AutoHideActivating;
+    private DateTime _AutoHideActivationHoldUntilUtc;
 
     // AutoHide Popup Host ========================================================================
 
@@ -215,6 +216,7 @@ namespace VsLikeDoking.UI.Host
       _OvLineP1 = Point.Empty;
 
       _AutoHideActivating = false;
+      _AutoHideActivationHoldUntilUtc = DateTime.MinValue;
 
       _AutoHidePopupHost = null;
       _AutoHidePopupKey = null;
@@ -2521,6 +2523,7 @@ namespace VsLikeDoking.UI.Host
       }
 
       _AutoHideActivating = true;
+      _AutoHideActivationHoldUntilUtc = DateTime.UtcNow.AddMilliseconds(250);
       try
       {
         // "Show" 우선(토글은 상태 불일치 시 반대로 동작 가능)
@@ -2543,6 +2546,10 @@ namespace VsLikeDoking.UI.Host
     private void HandleDismissAutoHidePopup()
     {
       if (_Manager is null) return;
+      if (_AutoHideActivating) return;
+
+      if (_Manager.IsAutoHidePopupVisible && DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
+        return;
 
       TrySetManagerAutoHidePopup(_Manager.ActiveAutoHideKey ?? string.Empty, visible: false);
 

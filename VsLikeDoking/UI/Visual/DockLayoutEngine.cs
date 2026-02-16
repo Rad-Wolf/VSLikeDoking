@@ -608,7 +608,22 @@ namespace VsLikeDoking.UI.Visual
       var maxExtent = GetMetricsInt("AutoHideTabMaxExtent", 120);
       if (maxExtent < minExtent) maxExtent = minExtent;
 
+      var verticalMinExtent = GetMetricsInt("AutoHideVerticalTabMinExtent", 36);
+      if (verticalMinExtent < 16) verticalMinExtent = 16;
+
+      var verticalMaxExtent = GetMetricsInt("AutoHideVerticalTabMaxExtent", 96);
+      if (verticalMaxExtent < verticalMinExtent) verticalMaxExtent = verticalMinExtent;
+
       tabExtent = MathEx.Clamp(tabExtent, minExtent, maxExtent);
+
+      var validItems = new List<(string key, Size popupSize)>();
+      foreach (var item in items)
+      {
+        if (TryGetPersistKeyAndPopupSize(item, out var key, out var popupSize))
+          validItems.Add((key, popupSize));
+      }
+
+      if (validItems.Count == 0) return 0;
 
       var built = 0;
 
@@ -617,17 +632,15 @@ namespace VsLikeDoking.UI.Visual
         var x = stripBounds.X + pad;
         var limit = stripBounds.Right - pad;
 
-        foreach (var item in items)
+        for (int i = 0; i < validItems.Count; i++)
         {
-          if (!TryGetPersistKeyAndPopupSize(item, out var key, out var popupSize)) continue;
-
+          var item = validItems[i];
           if (x + tabExtent > limit) break;
 
           var tabBounds = new Rectangle(x, stripBounds.Y, tabExtent, stripBounds.Height);
-          var isActive = !string.IsNullOrEmpty(activeKey) && string.Equals(activeKey, key, StringComparison.Ordinal);
+          var isActive = !string.IsNullOrEmpty(activeKey) && string.Equals(activeKey, item.key, StringComparison.Ordinal);
 
-          // ContentKey는 string(그리기/히트테스트 유지), PopupSize는 별도 전달(메타 캐시 목적)
-          tree.AddAutoHideTab(stripIndex, key, tabBounds, isActive, popupSize);
+          tree.AddAutoHideTab(stripIndex, item.key, tabBounds, isActive, item.popupSize);
           built++;
           x += tabExtent + gap;
         }
@@ -637,48 +650,39 @@ namespace VsLikeDoking.UI.Visual
 
       var y = stripBounds.Y + pad;
       var yLimit = stripBounds.Bottom - pad;
+      var usable = Math.Max(0, yLimit - y);
 
-      var verticalItems = new List<(string Key, Size? PopupSize)>();
-      foreach (var item in items)
+      if (usable <= 0) return 0;
+
+      var perTab = tabExtent;
+      if (validItems.Count > 0)
       {
-        if (!TryGetPersistKeyAndPopupSize(item, out var key, out var popupSize)) continue;
-
-        verticalItems.Add((key, popupSize));
+        var totalGap = gap * Math.Max(0, validItems.Count - 1);
+        var fitExtent = (usable - totalGap) / validItems.Count;
+        perTab = Math.Min(perTab, fitExtent);
       }
 
-      if (verticalItems.Count == 0) return 0;
+      perTab = MathEx.Clamp(perTab, verticalMinExtent, verticalMaxExtent);
 
-      var available = Math.Max(0, yLimit - y);
-      if (available <= 0) return 0;
-
-      var each = Math.Max(1, available / verticalItems.Count);
-      var yCur = y;
-
-      for (int i = 0; i < verticalItems.Count; i++)
+      for (int i = 0; i < validItems.Count; i++)
       {
-        var key = verticalItems[i].Key;
-        var popupSize = verticalItems[i].PopupSize;
+        var item = validItems[i];
+        if (y + perTab > yLimit) break;
 
-        var remain = yLimit - yCur;
-        if (remain <= 0) break;
+        var tabBounds = new Rectangle(stripBounds.X, y, stripBounds.Width, perTab);
+        var isActive = !string.IsNullOrEmpty(activeKey) && string.Equals(activeKey, item.key, StringComparison.Ordinal);
 
-        var tabH = (i == verticalItems.Count - 1) ? remain : Math.Min(each, remain);
-        if (tabH < 8) break;
-
-        var tabBounds = new Rectangle(stripBounds.X, yCur, stripBounds.Width, tabH);
-        var isActive = !string.IsNullOrEmpty(activeKey) && string.Equals(activeKey, key, StringComparison.Ordinal);
-
-        tree.AddAutoHideTab(stripIndex, key, tabBounds, isActive, popupSize);
+        tree.AddAutoHideTab(stripIndex, item.key, tabBounds, isActive, item.popupSize);
         built++;
 
-        y += tabExtent + gap;
+        y += perTab + gap;
       }
 
       return built;
     }
 
 
-    private static bool HasRenderableAutoHideTab(IEnumerable items, DockVisualTree.DockEdge edge, Rectangle stripBounds, int tabExtent, int pad)
+    private bool HasRenderableAutoHideTab(IEnumerable items, DockVisualTree.DockEdge edge, Rectangle stripBounds, int tabExtent, int pad)
     {
       if (items is null) return false;
 
@@ -687,9 +691,10 @@ namespace VsLikeDoking.UI.Visual
         ? Math.Max(0, stripBounds.Width - (pad * 2))
         : Math.Max(0, stripBounds.Height - (pad * 2));
 
-      // 세로 AutoHide는 split 폭이 얇기 때문에 tabExtent(가로 탭 기준값)으로 막으면
-      // 탭이 생성되지 않아 제목이 '-'처럼 보이거나 strip만 남을 수 있다.
-      var minRequired = isHorizontal ? Math.Max(8, tabExtent) : 28;
+      var minRequired = isHorizontal
+        ? Math.Max(8, GetMetricsInt("AutoHideTabMinExtent", 28))
+        : Math.Max(16, GetMetricsInt("AutoHideVerticalTabMinExtent", 36));
+
       if (usable < minRequired) return false;
 
       foreach (var item in items)
@@ -700,6 +705,7 @@ namespace VsLikeDoking.UI.Visual
 
       return false;
     }
+
 
     private static Rectangle ComputeEdgeBounds(Rectangle bounds, DockVisualTree.DockEdge edge, int thickness)
     {
