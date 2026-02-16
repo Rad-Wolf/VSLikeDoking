@@ -32,6 +32,9 @@ namespace VsLikeDoking.UI.Input
     // MouseUp에서 다시 토글되지 않도록 _SuppressClick을 켜고, 상태 리셋을 위해 플래그를 둔다.
     private bool _AutoHideOpenedOnMouseDown;
 
+    // (PATCH) AutoHide 탭 전환 직후에는 이전 포커스 경로의 지연 dismiss를 무시한다.
+    private DateTime _AutoHideSwitchGuardUntilUtc;
+
     private readonly DockSplitterDrag _SplitterDrag = new();
 
     // Properties =================================================================================
@@ -96,6 +99,7 @@ namespace VsLikeDoking.UI.Input
       _Pressed = DockHitTestResult.None();
 
       _AutoHideOpenedOnMouseDown = false;
+      _AutoHideSwitchGuardUntilUtc = DateTime.MinValue;
     }
 
     // Attach / Detach =============================================================================
@@ -308,6 +312,7 @@ namespace VsLikeDoking.UI.Input
       {
         _AutoHideOpenedOnMouseDown = true;
         _SuppressClick = true;
+        _AutoHideSwitchGuardUntilUtc = DateTime.UtcNow.AddMilliseconds(450);
 
         RaiseRequest(DockInputRequest.ActivateAutoHideTab(hit.AutoHideStripIndex, hit.AutoHideTabIndex));
         return;
@@ -388,6 +393,11 @@ namespace VsLikeDoking.UI.Input
       _AutoHideOpenedOnMouseDown = false;
     }
 
+    private bool IsWithinAutoHideSwitchGuardWindow()
+    {
+      return DateTime.UtcNow < _AutoHideSwitchGuardUntilUtc;
+    }
+
     private void OnLostFocus(object? sender, EventArgs e)
     {
       var surface = _Surface;
@@ -400,6 +410,9 @@ namespace VsLikeDoking.UI.Input
 
       // 포커스가 나가면 hover도 지우는 편이 안전
       SetHover(DockHitTestResult.None());
+
+      if (IsWithinAutoHideSwitchGuardWindow())
+        return;
 
       if (surface is null || surface.IsDisposed)
       {
@@ -438,6 +451,7 @@ namespace VsLikeDoking.UI.Input
           }
 
           if (s.ContainsFocus) return;
+          if (IsWithinAutoHideSwitchGuardWindow()) return;
 
           var hostForm = s.FindForm();
           if (LostFocus_ShouldKeepPopupOpen(hostForm))
@@ -459,20 +473,23 @@ namespace VsLikeDoking.UI.Input
       }
     }
 
-    private static bool LostFocus_ShouldKeepPopupOpen(Form? hostForm)
+    private bool LostFocus_ShouldKeepPopupOpen(Form? hostForm)
     {
       if (hostForm is null || hostForm.IsDisposed) return false;
 
       if (hostForm.ContainsFocus) return true;
 
-      // 인스턴스 메서드이므로 this가 필요함. 호출부에서 this를 전달해야 함.
-      // 기존: if (IsAutoHideInteractionInProgress()) return true;
-      // 수정: 호출부에서 this를 전달받아야 하므로, 파라미터로 DockInputRouter를 추가
-      throw new InvalidOperationException("LostFocus_ShouldKeepPopupOpen는 DockInputRouter 인스턴스가 필요합니다. 호출부에서 this를 전달해야 합니다.");
+      if (IsAutoHideInteractionInProgress()) return true;
+
+      var active = Form.ActiveForm;
+      if (active is null) return true;
+      if (active.IsDisposed) return false;
+
+      return ReferenceEquals(active, hostForm);
     }
 
 
-    private  bool IsAutoHideInteractionInProgress()
+    private bool IsAutoHideInteractionInProgress()
     {
       if (_Pressed.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
         return true;
@@ -557,6 +574,7 @@ namespace VsLikeDoking.UI.Input
 
       _SuppressClick = false;
       _AutoHideOpenedOnMouseDown = false;
+      _AutoHideSwitchGuardUntilUtc = DateTime.MinValue;
 
       _Hover = DockHitTestResult.None();
       _Pressed = DockHitTestResult.None();
