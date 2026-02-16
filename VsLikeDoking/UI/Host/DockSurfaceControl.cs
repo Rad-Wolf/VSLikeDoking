@@ -2521,7 +2521,7 @@ namespace VsLikeDoking.UI.Host
       }
 
       _AutoHideActivating = true;
-      _AutoHideActivationHoldUntilUtc = DateTime.UtcNow.AddMilliseconds(700);
+      _AutoHideActivationHoldUntilUtc = DateTime.UtcNow.AddMilliseconds(1200);
       try
       {
         // "Show" 우선(토글은 상태 불일치 시 반대로 동작 가능)
@@ -2546,17 +2546,14 @@ namespace VsLikeDoking.UI.Host
       if (_Manager is null) return;
       if (_AutoHideActivating) return;
 
-      if (_Manager.IsAutoHidePopupVisible && DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
+      if (DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
         return;
 
-      var hostForm = FindForm();
-      if (hostForm is not null && !hostForm.IsDisposed)
-      {
-        var activeForm = Form.ActiveForm;
-        var stillInHost = activeForm is null || ReferenceEquals(activeForm, hostForm);
-        if (stillInHost && IsDismissSuppressedByAutoHideInteraction())
-          return;
-      }
+      if ((Control.MouseButtons & MouseButtons.Left) != 0)
+        return;
+
+      if (IsDismissSuppressedByAutoHideInteraction())
+        return;
 
       TrySetManagerAutoHidePopup(_Manager.ActiveAutoHideKey ?? string.Empty, visible: false);
 
