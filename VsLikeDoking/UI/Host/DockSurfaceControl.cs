@@ -62,6 +62,9 @@ namespace VsLikeDoking.UI.Host
     private Point _OvLineP0;
     private Point _OvLineP1;
 
+    private bool _AutoHideActivating;
+    private DateTime _AutoHideActivationHoldUntilUtc;
+
     // AutoHide Popup Host ========================================================================
 
     private Panel? _AutoHidePopupHost;
@@ -188,6 +191,8 @@ namespace VsLikeDoking.UI.Host
       _InputRouter.VisualStateChanged += OnVisualStateChanged;
       _InputRouter.RequestRaised += OnInputRequest;
 
+      MouseUp += OnSurfaceMouseUp;
+
       _TabDragDrop = new DockDragDropService();
       _TabDragDrop.Attach(this);
       _TabDragDrop.VisualTree = _Tree;
@@ -209,6 +214,9 @@ namespace VsLikeDoking.UI.Host
       _OvBoundsScreen = Rectangle.Empty;
       _OvLineP0 = Point.Empty;
       _OvLineP1 = Point.Empty;
+
+      _AutoHideActivating = false;
+      _AutoHideActivationHoldUntilUtc = DateTime.MinValue;
 
       _AutoHidePopupHost = null;
       _AutoHidePopupKey = null;
@@ -354,6 +362,7 @@ namespace VsLikeDoking.UI.Host
 
         _InputRouter.VisualStateChanged -= OnVisualStateChanged;
         _InputRouter.RequestRaised -= OnInputRequest;
+        MouseUp -= OnSurfaceMouseUp;
         _InputRouter.Detach();
 
         _TabDragDrop.DragBegun -= OnTabDragBegun;
@@ -2295,12 +2304,12 @@ namespace VsLikeDoking.UI.Host
         var sv = strips [ si ];
         if (sv.Bounds.IsEmpty) continue;
 
-        _Renderer.DrawAutoHideStripBackground( g, sv.Bounds );
-
         var dir = MapAutoHideEdgeToTextDirection( sv.Edge );
 
         var start = sv.TabStart;
         var end = sv.TabStart + sv.TabCount;
+
+        _Renderer.DrawAutoHideStripBackground( g, sv.Bounds );
 
         for (int ti = start ; ti < end ; ti++)
         {
@@ -2345,6 +2354,92 @@ namespace VsLikeDoking.UI.Host
         DockVisualTree.DockEdge.Right => VsDockRenderer.AutoHideTextDirection.Rotate90,
         _ => VsDockRenderer.AutoHideTextDirection.Horizontal,
       };
+    }
+
+    private void OnSurfaceMouseUp(object? sender, MouseEventArgs e)
+    {
+      if (IsDisposed) return;
+      if (e.Button != MouseButtons.Right) return;
+      if (_Manager is null) return;
+
+      var hit = DockHitTest.HitTest(_Tree, e.Location);
+
+      if (hit.Kind == DockVisualTree.RegionKind.Tab)
+      {
+        if ((uint)hit.TabIndex >= (uint)_Tree.Tabs.Count) return;
+        var tv = _Tree.Tabs[hit.TabIndex];
+        var key = GetPersistKeySafe(tv.ContentKey).Trim();
+        if (key.Length == 0) return;
+
+        IDockContent? content = null;
+        try { content = _Manager.Registry.Get(key); } catch { content = null; }
+        if (content is null || content.Kind != DockContentKind.ToolWindow) return;
+
+        ShowTabContextMenu(key, e.Location);
+        return;
+      }
+
+      if (hit.Kind == DockVisualTree.RegionKind.AutoHideTab)
+      {
+        if (!TryResolveAutoHideTabIndices(hit.AutoHideStripIndex, hit.AutoHideTabIndex, out _, out var globalIndex)) return;
+        if ((uint)globalIndex >= (uint)_Tree.AutoHideTabs.Count) return;
+
+        var tv = _Tree.AutoHideTabs[globalIndex];
+        var key = GetAutoHideTabPersistKeySafe(tv.ContentKey, tv).Trim();
+        if (key.Length == 0) return;
+
+        ShowAutoHideTabContextMenu(key, e.Location);
+      }
+    }
+
+    private void ShowTabContextMenu(string key, Point clientPoint)
+    {
+      if (IsDisposed) return;
+      var menu = new ContextMenuStrip();
+      menu.Items.Add("AutoHide Left", null, (s, e) => PinToolToAutoHideFromMenu(key, DockAutoHideSide.Left));
+      menu.Items.Add("AutoHide Right", null, (s, e) => PinToolToAutoHideFromMenu(key, DockAutoHideSide.Right));
+      menu.Items.Add("AutoHide Top", null, (s, e) => PinToolToAutoHideFromMenu(key, DockAutoHideSide.Top));
+      menu.Items.Add("AutoHide Bottom", null, (s, e) => PinToolToAutoHideFromMenu(key, DockAutoHideSide.Bottom));
+      SafeShowContextMenu(menu, clientPoint);
+    }
+
+    private void ShowAutoHideTabContextMenu(string key, Point clientPoint)
+    {
+      if (IsDisposed) return;
+      if (_Manager is null) return;
+
+      var menu = new ContextMenuStrip();
+      menu.Items.Add("Unpin AutoHide", null, (s, e) =>
+      {
+        _Manager.UnpinFromAutoHide(key, targetGroupNodeId: null, makeActive: true, reason: "UI:ContextMenu:UnpinAutoHide");
+        MarkVisualDirtyAndRender();
+      });
+      SafeShowContextMenu(menu, clientPoint);
+    }
+
+    private void SafeShowContextMenu(ContextMenuStrip menu, Point clientPoint)
+    {
+      if (menu is null) return;
+
+      if (IsDisposed)
+      {
+        try { menu.Dispose(); } catch { }
+        return;
+      }
+
+      try { menu.Show(this, clientPoint); }
+      catch
+      {
+        try { menu.Dispose(); } catch { }
+      }
+    }
+
+    private void PinToolToAutoHideFromMenu(string key, DockAutoHideSide side)
+    {
+      if (_Manager is null) return;
+
+      if (_Manager.PinToAutoHide(key, side, popupSize: null, showPopup: true, reason: $"UI:ContextMenu:Pin:{side}:{key}"))
+        MarkVisualDirtyAndRender();
     }
 
     private static string GetPersistKeySafe(object? keyObj)
@@ -2406,6 +2501,7 @@ namespace VsLikeDoking.UI.Host
     private void HandleActivateAutoHideTab(int stripIndex, int tabIndex)
     {
       if (_Manager is null) return;
+      if (_AutoHideActivating) return;
 
       if (!TryResolveAutoHideTabIndices( stripIndex, tabIndex, out _, out var globalIndex ))
         return;
@@ -2419,23 +2515,44 @@ namespace VsLikeDoking.UI.Host
       key = key.Trim( );
       if (key.Length == 0) return;
 
-      // "Show" 우선(토글은 상태 불일치 시 반대로 동작 가능)
-      var shown =
-        TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key, "UI:AutoHideTab" )
-        || TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key )
-        || TryInvokeByReflection( _Manager, "ToggleAutoHidePopup", key, "UI:AutoHideTab" )
-        || TrySetManagerAutoHidePopup( key, visible: true );
+      if (_Manager.IsAutoHidePopupVisible
+        && string.Equals(_Manager.ActiveAutoHideKey, key, StringComparison.Ordinal))
+      {
+        RequestRender();
+        return;
+      }
 
-      // VS 느낌: 팝업을 열며 활성도 tool로 맞춘다.
-      _Manager.SetActiveContent( key );
+      _AutoHideActivating = true;
+      _AutoHideActivationHoldUntilUtc = DateTime.UtcNow.AddMilliseconds(700);
+      try
+      {
+        // "Show" 우선(토글은 상태 불일치 시 반대로 동작 가능)
+        var shown =
+          TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key, "UI:AutoHideTab" )
+          || TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key )
+          || TrySetManagerAutoHidePopup( key, visible: true );
 
-      if (shown) MarkVisualDirtyAndRender( );
-      else RequestRender( );
+        // ShowAutoHidePopup 내부에서 ActiveContent까지 맞추므로 여기서 다시 SetActiveContent를 호출하면
+        // 동일 키 재진입으로 토글-off가 발생할 수 있다.
+        if (shown) MarkVisualDirtyAndRender( );
+        else RequestRender( );
+      }
+      finally
+      {
+        _AutoHideActivating = false;
+      }
     }
 
     private void HandleDismissAutoHidePopup()
     {
       if (_Manager is null) return;
+      if (_AutoHideActivating) return;
+
+      if (_Manager.IsAutoHidePopupVisible && DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
+        return;
+
+      if (IsDismissSuppressedByAutoHideInteraction())
+        return;
 
       TrySetManagerAutoHidePopup(_Manager.ActiveAutoHideKey ?? string.Empty, visible: false);
 
@@ -2443,6 +2560,26 @@ namespace VsLikeDoking.UI.Host
       HideAutoHidePopupHost(removeView: false);
 
       RequestRender();
+    }
+
+
+    private bool IsDismissSuppressedByAutoHideInteraction()
+    {
+      if (_InputRouter.Pressed.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+        return true;
+
+      if (_InputRouter.Hover.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+        return true;
+
+      Point client;
+      try { client = PointToClient(Control.MousePosition); }
+      catch { return false; }
+
+      var hit = DockHitTest.HitTest(_Tree, client);
+      if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+        return true;
+
+      return false;
     }
 
     private void HandleCloseTab(int tabIndex)
