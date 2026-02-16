@@ -294,19 +294,6 @@ namespace VsLikeDoking.UI.Input
       var hit = Hit(e.Location);
       SetPressed(hit);
 
-      // 탭 전환 루프 방지:
-      // AutoHide 탭/스트립을 누르는 동안은 dismiss를 올리지 않는다.
-      // (탭 전환 중 hit-test가 strip으로 흔들려도 close 요청이 끼어들지 않도록)
-      if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
-        return;
-
-      if (_Hover.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
-        return;
-
-      // AutoHide 탭을 누른 게 아니면 "바깥 클릭"으로 간주하고 Hide 요청을 올린다.
-      // (실제 Hide 여부는 Host에서 DockManager 상태를 보고 판단)
-      RaiseRequest(DockInputRequest.DismissAutoHidePopup());
-
       // 스플리터는 "클릭 즉시"가 아니라, 드래그 임계치 초과 시 Begin
       if (hit.Kind == DockVisualTree.RegionKind.Splitter && _Tree is not null)
       {
@@ -349,7 +336,17 @@ namespace VsLikeDoking.UI.Input
       {
         // 클릭 판정 : down 때 눌렀던 대상과 up 때 대상이 같아야 클릭으로 본다.
         var up = Hit(e.Location);
-        if (IsSameTarget(_Pressed, up)) RaiseClickRequest(_Pressed);
+
+        if (IsSameTarget(_Pressed, up))
+        {
+          if (!RaiseClickRequest(_Pressed) && !IsAutoHideChrome(up.Kind))
+            RaiseRequest(DockInputRequest.DismissAutoHidePopup());
+        }
+        else if (!IsAutoHideChrome(_Pressed.Kind) && !IsAutoHideChrome(up.Kind))
+        {
+          // AutoHide 탭 전환과 경쟁하지 않도록 dismiss는 MouseUp에서 확정 처리한다.
+          RaiseRequest(DockInputRequest.DismissAutoHidePopup());
+        }
       }
 
       _LeftDown = false;
@@ -437,6 +434,9 @@ namespace VsLikeDoking.UI.Input
       return true;
     }
 
+    private static bool IsAutoHideChrome(DockVisualTree.RegionKind kind)
+      => kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip;
+
     private void ResetPointerStates()
     {
       _LeftDown = false;
@@ -452,28 +452,28 @@ namespace VsLikeDoking.UI.Input
 
     // Click Requests ============================================================================
 
-    private void RaiseClickRequest(DockHitTestResult pressed)
+    private bool RaiseClickRequest(DockHitTestResult pressed)
     {
       switch (pressed.Kind)
       {
         case DockVisualTree.RegionKind.Tab:
           RaiseRequest(DockInputRequest.ActivateTab(pressed.GroupIndex, pressed.TabIndex));
-          return;
+          return true;
 
         case DockVisualTree.RegionKind.TabClose:
           RaiseRequest(DockInputRequest.CloseTab(pressed.GroupIndex, pressed.TabIndex));
-          return;
+          return true;
 
         case DockVisualTree.RegionKind.CaptionClose:
           RaiseRequest(DockInputRequest.CloseGroup(pressed.GroupIndex));
-          return;
+          return true;
 
         case DockVisualTree.RegionKind.AutoHideTab:
           RaiseRequest(DockInputRequest.ActivateAutoHideTab(pressed.AutoHideStripIndex, pressed.AutoHideTabIndex));
-          return;
+          return true;
 
         default:
-          return;
+          return false;
       }
     }
 
