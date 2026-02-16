@@ -28,15 +28,6 @@ namespace VsLikeDoking.UI.Input
 
     private bool _SuppressClick;
 
-    // AutoHide 탭 입력 보조 상태(탭 전환 루프 완화 목적)
-    private bool _AutoHideOpenedOnMouseDown;
-
-    // (PATCH) AutoHide 탭 전환 직후에는 이전 포커스 경로의 지연 dismiss를 무시한다.
-    private DateTime _AutoHideSwitchGuardUntilUtc;
-
-    // (PATCH) AutoHide 활성화 세대. 이전 세대에서 예약된 dismiss 재확인은 무시한다.
-    private int _AutoHideActivationEpoch;
-
     private readonly DockSplitterDrag _SplitterDrag = new();
 
     // Properties =================================================================================
@@ -100,9 +91,6 @@ namespace VsLikeDoking.UI.Input
       _Hover = DockHitTestResult.None();
       _Pressed = DockHitTestResult.None();
 
-      _AutoHideOpenedOnMouseDown = false;
-      _AutoHideSwitchGuardUntilUtc = DateTime.MinValue;
-      _AutoHideActivationEpoch = 0;
     }
 
     // Attach / Detach =============================================================================
@@ -302,7 +290,6 @@ namespace VsLikeDoking.UI.Input
       _LeftDown = true;
       _DownPoint = e.Location;
       _SuppressClick = false;
-      _AutoHideOpenedOnMouseDown = false;
 
       var hit = Hit(e.Location);
       SetPressed(hit);
@@ -311,6 +298,9 @@ namespace VsLikeDoking.UI.Input
       // AutoHide 탭/스트립을 누르는 동안은 dismiss를 올리지 않는다.
       // (탭 전환 중 hit-test가 strip으로 흔들려도 close 요청이 끼어들지 않도록)
       if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+        return;
+
+      if (_Hover.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
         return;
 
       // AutoHide 탭을 누른 게 아니면 "바깥 클릭"으로 간주하고 Hide 요청을 올린다.
@@ -345,8 +335,7 @@ namespace VsLikeDoking.UI.Input
         _LeftDown = false;
 
         _SuppressClick = false;
-        _AutoHideOpenedOnMouseDown = false;
-
+  
         SetPressed(DockHitTestResult.None());
         UpdateHover(e.Location);
         return;
@@ -367,7 +356,6 @@ namespace VsLikeDoking.UI.Input
       _Surface.Capture = false;
 
       _SuppressClick = false;
-      _AutoHideOpenedOnMouseDown = false;
 
       SetPressed(DockHitTestResult.None());
       UpdateHover(e.Location);
@@ -385,7 +373,31 @@ namespace VsLikeDoking.UI.Input
         CancelSplitter(true);
 
       _SuppressClick = false;
-      _AutoHideOpenedOnMouseDown = false;
+    }
+
+    private void OnLostFocus(object? sender, EventArgs e)
+    {
+      if (_SplitterDrag.IsCandidate)
+        CancelSplitter(true);
+
+      _SuppressClick = false;
+      SetHover(DockHitTestResult.None());
+
+      var surface = _Surface;
+      if (surface is null || surface.IsDisposed)
+      {
+        RaiseRequest(DockInputRequest.DismissAutoHidePopup());
+        return;
+      }
+
+      var hostForm = surface.FindForm();
+      var activeForm = Form.ActiveForm;
+
+      // 같은 Host 폼 내 포커스 이동(예: AutoHide 탭 전환)에서는 닫지 않는다.
+      if (hostForm is not null && !hostForm.IsDisposed && ReferenceEquals(activeForm, hostForm))
+        return;
+
+      RaiseRequest(DockInputRequest.DismissAutoHidePopup());
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
@@ -447,8 +459,6 @@ namespace VsLikeDoking.UI.Input
       _DownPoint = Point.Empty;
 
       _SuppressClick = false;
-      _AutoHideOpenedOnMouseDown = false;
-      _AutoHideSwitchGuardUntilUtc = DateTime.MinValue;
 
       _Hover = DockHitTestResult.None();
       _Pressed = DockHitTestResult.None();
