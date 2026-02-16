@@ -179,7 +179,7 @@ namespace VsLikeDoking.Rendering
 
       // 세로 텍스트는 strip 폭이 얇아 x-padding을 크게 주면 한 글자만 남을 수 있다.
       // 회전 텍스트는 y축 위주로 패딩을 주고, x축은 최소만 줄인다.
-      textRect = Rectangle.Inflate(bounds, -2, -4);
+      textRect = Rectangle.Inflate(bounds, -1, -2);
 
       DrawAutoHideTabTextRotated(g, textRect, text, textColor, textDirection);
     }
@@ -203,8 +203,8 @@ namespace VsLikeDoking.Rendering
         g.TranslateTransform(centerX, centerY);
         g.RotateTransform(angle);
 
-        var localWidth = Math.Max(1f, bounds.Height - 4f);
-        var localHeight = Math.Max(1f, bounds.Width - 2f);
+        var localWidth = Math.Max(8f, bounds.Height - 6f);
+        var localHeight = Math.Max(18f, bounds.Width + 8f);
         var local = new RectangleF(-localWidth / 2f, -localHeight / 2f, localWidth, localHeight);
 
         using var sf = new StringFormat

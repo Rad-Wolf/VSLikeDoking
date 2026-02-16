@@ -2551,12 +2551,32 @@ namespace VsLikeDoking.UI.Host
       if (_Manager.IsAutoHidePopupVisible && DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
         return;
 
+      if (IsDismissSuppressedByAutoHideInteraction())
+        return;
+
       TrySetManagerAutoHidePopup(_Manager.ActiveAutoHideKey ?? string.Empty, visible: false);
 
       // UI 즉시 숨김(Manager 이벤트 지연/누락 대비)
       HideAutoHidePopupHost(removeView: false);
 
       RequestRender();
+    }
+
+
+    private bool IsDismissSuppressedByAutoHideInteraction()
+    {
+      if (_InputRouter.Pressed.Kind == DockVisualTree.RegionKind.AutoHideTab)
+        return true;
+
+      if (Control.MouseButtons != MouseButtons.Left)
+        return false;
+
+      Point client;
+      try { client = PointToClient(Control.MousePosition); }
+      catch { return false; }
+
+      var hit = DockHitTest.HitTest(_Tree, client);
+      return hit.Kind == DockVisualTree.RegionKind.AutoHideTab;
     }
 
     private void HandleCloseTab(int tabIndex)
