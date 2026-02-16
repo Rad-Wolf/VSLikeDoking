@@ -121,7 +121,6 @@ namespace VsLikeDoking.UI.Input
       surface.MouseUp += OnMouseUp;
       surface.MouseLeave += OnMouseLeave;
       surface.MouseCaptureChanged += OnMouseCaptureChanged;
-      surface.LostFocus += OnLostFocus;
       surface.KeyDown += OnKeyDown;
     }
 
@@ -137,7 +136,6 @@ namespace VsLikeDoking.UI.Input
       s.MouseUp -= OnMouseUp;
       s.MouseLeave -= OnMouseLeave;
       s.MouseCaptureChanged -= OnMouseCaptureChanged;
-      s.LostFocus -= OnLostFocus;
       s.KeyDown -= OnKeyDown;
 
       _Surface = null;
@@ -388,19 +386,6 @@ namespace VsLikeDoking.UI.Input
 
       _SuppressClick = false;
       _AutoHideOpenedOnMouseDown = false;
-    }
-
-    private bool IsWithinAutoHideSwitchGuardWindow()
-    {
-      if (_SplitterDrag.IsCandidate)
-        CancelSplitter(true);
-
-      _SuppressClick = false;
-      _AutoHideOpenedOnMouseDown = false;
-
-      // 탭 전환 시 레이스를 피하기 위해 LostFocus에서는 dismiss를 발생시키지 않는다.
-      // dismiss는 외부 클릭/ESC 경로에서만 처리한다.
-      SetHover(DockHitTestResult.None());
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
