@@ -323,7 +323,7 @@ namespace VsLikeDoking.UI.Input
         return;
       }
 
-      // AutoHide 탭을 누른 게 아니면 "바깥 클릭"로 간주하고 Hide 요청을 올린다.
+      // AutoHide 탭을 누른 게 아니면 "바깥 클릭"으로 간주하고 Hide 요청을 올린다.
       // (실제 Hide 여부는 Host에서 DockManager 상태를 보고 판단)
       RaiseRequest(DockInputRequest.DismissAutoHidePopup());
 
