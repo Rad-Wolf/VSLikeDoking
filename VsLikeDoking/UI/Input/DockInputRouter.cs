@@ -341,15 +341,7 @@ namespace VsLikeDoking.UI.Input
         var up = Hit(e.Location);
 
         if (IsSameTarget(_Pressed, up))
-        {
-          if (!RaiseClickRequest(_Pressed) && !IsAutoHideChrome(up.Kind))
-            RaiseRequest(DockInputRequest.DismissAutoHidePopup());
-        }
-        else if (!IsAutoHideChrome(_Pressed.Kind) && !IsAutoHideChrome(up.Kind))
-        {
-          // AutoHide 탭 전환과 경쟁하지 않도록 dismiss는 MouseUp에서 확정 처리한다.
-          RaiseRequest(DockInputRequest.DismissAutoHidePopup());
-        }
+          _ = RaiseClickRequest(_Pressed);
       }
 
       _LeftDown = false;

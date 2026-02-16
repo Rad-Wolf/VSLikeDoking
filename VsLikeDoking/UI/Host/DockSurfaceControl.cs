@@ -2470,6 +2470,15 @@ namespace VsLikeDoking.UI.Host
       if (e.Button == MouseButtons.Left)
       {
         TryFlushPendingAutoHideDismiss();
+
+        // Surface 직접 클릭의 outside dismiss는 Host에서 좌표 기반으로 확정 처리한다.
+        // (InputRouter MouseUp dismiss 경로 제거로 인한 단일 경로화)
+        if (_Manager is not null && _Manager.IsAutoHidePopupVisible)
+        {
+          if (!IsPointWithinAutoHideInteractionArea(e.Location))
+            HandleDismissAutoHidePopup();
+        }
+
         return;
       }
 
@@ -2504,6 +2513,24 @@ namespace VsLikeDoking.UI.Host
 
         ShowAutoHideTabContextMenu(key, e.Location);
       }
+    }
+
+    private bool IsPointWithinAutoHideInteractionArea(Point client)
+    {
+      if (_AutoHidePopupHost is not null && !_AutoHidePopupHost.IsDisposed && _AutoHidePopupHost.Visible)
+      {
+        try
+        {
+          if (_AutoHidePopupHost.Bounds.Contains(client)) return true;
+        }
+        catch { }
+      }
+
+      var hit = DockHitTest.HitTest(_Tree, client);
+      if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+        return true;
+
+      return false;
     }
 
     private void ShowTabContextMenu(string key, Point clientPoint)
