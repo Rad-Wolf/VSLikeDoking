@@ -2525,10 +2525,7 @@ namespace VsLikeDoking.UI.Host
       try
       {
         // "Show" 우선(토글은 상태 불일치 시 반대로 동작 가능)
-        var shown =
-          TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key, "UI:AutoHideTab" )
-          || TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key )
-          || TrySetManagerAutoHidePopup( key, visible: true );
+        var shown = _Manager.ShowAutoHidePopup( key, "UI:AutoHideTab" );
 
         // ShowAutoHidePopup 내부에서 ActiveContent까지 맞추므로 여기서 다시 SetActiveContent를 호출하면
         // 동일 키 재진입으로 토글-off가 발생할 수 있다.
@@ -2555,13 +2552,10 @@ namespace VsLikeDoking.UI.Host
         return;
       }
 
-      if ((Control.MouseButtons & MouseButtons.Left) != 0)
-        return;
-
       if (IsDismissSuppressedByAutoHideInteraction())
         return;
 
-      TrySetManagerAutoHidePopup(_Manager.ActiveAutoHideKey ?? string.Empty, visible: false);
+      _Manager.HideAutoHidePopup("UI:AutoHideDismiss");
 
       // UI 즉시 숨김(Manager 이벤트 지연/누락 대비)
       HideAutoHidePopupHost(removeView: false);
