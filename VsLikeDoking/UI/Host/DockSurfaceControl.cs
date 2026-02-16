@@ -2523,7 +2523,7 @@ namespace VsLikeDoking.UI.Host
       }
 
       _AutoHideActivating = true;
-      _AutoHideActivationHoldUntilUtc = DateTime.UtcNow.AddMilliseconds(250);
+      _AutoHideActivationHoldUntilUtc = DateTime.UtcNow.AddMilliseconds(700);
       try
       {
         // "Show" 우선(토글은 상태 불일치 시 반대로 동작 가능)
@@ -2565,18 +2565,21 @@ namespace VsLikeDoking.UI.Host
 
     private bool IsDismissSuppressedByAutoHideInteraction()
     {
-      if (_InputRouter.Pressed.Kind == DockVisualTree.RegionKind.AutoHideTab)
+      if (_InputRouter.Pressed.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
         return true;
 
-      if (Control.MouseButtons != MouseButtons.Left)
-        return false;
+      if (_InputRouter.Hover.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+        return true;
 
       Point client;
       try { client = PointToClient(Control.MousePosition); }
       catch { return false; }
 
       var hit = DockHitTest.HitTest(_Tree, client);
-      return hit.Kind == DockVisualTree.RegionKind.AutoHideTab;
+      if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+        return true;
+
+      return false;
     }
 
     private void HandleCloseTab(int tabIndex)

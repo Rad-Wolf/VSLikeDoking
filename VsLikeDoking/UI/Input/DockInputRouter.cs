@@ -487,12 +487,6 @@ namespace VsLikeDoking.UI.Input
         return;
       }
 
-      if (surface is null || surface.IsDisposed)
-      {
-        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
       var hostForm = surface.FindForm();
       if (hostForm is not null && !hostForm.IsDisposed && hostForm.ContainsFocus)
         return;
