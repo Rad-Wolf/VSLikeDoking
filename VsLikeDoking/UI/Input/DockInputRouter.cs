@@ -382,36 +382,6 @@ namespace VsLikeDoking.UI.Input
 
       _SuppressClick = false;
       SetHover(DockHitTestResult.None());
-
-      var surface = _Surface;
-      if (surface is null || surface.IsDisposed)
-      {
-        RaiseRequest(DockInputRequest.DismissAutoHidePopup());
-        return;
-      }
-
-      if ((Control.MouseButtons & MouseButtons.Left) != 0)
-        return;
-
-      if (_Tree is not null)
-      {
-        Point client;
-        try { client = surface.PointToClient(Control.MousePosition); }
-        catch { client = Point.Empty; }
-
-        var hit = DockHitTest.HitTest(_Tree, client);
-        if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
-          return;
-      }
-
-      var hostForm = surface.FindForm();
-      var activeForm = Form.ActiveForm;
-
-      // 같은 Host 폼 내 포커스 이동(예: AutoHide 탭 전환)에서는 닫지 않는다.
-      if (hostForm is not null && !hostForm.IsDisposed && ReferenceEquals(activeForm, hostForm))
-        return;
-
-      RaiseRequest(DockInputRequest.DismissAutoHidePopup());
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)

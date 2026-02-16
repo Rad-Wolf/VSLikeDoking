@@ -84,6 +84,9 @@ namespace VsLikeDoking.UI.Host
     private DockAutoHideSide _AutoHideResizeSide;
     private string? _AutoHideResizeKey;
 
+    // Host Form deactivate hook (AutoHide 강제 닫기) ================================================
+    private Form? _HookedHostForm;
+
     // Content MouseDown Forwarding (AutoHide Dismiss) =============================================
 
     private readonly HashSet<Control> _ForwardedMouseDownHooks = new();
@@ -310,12 +313,46 @@ namespace VsLikeDoking.UI.Host
       DrawAutoHide(g);
     }
 
+    private void UpdateHostFormHook()
+    {
+      var form = FindForm();
+      if (ReferenceEquals(_HookedHostForm, form)) return;
+
+      if (_HookedHostForm is not null && !_HookedHostForm.IsDisposed)
+      {
+        try { _HookedHostForm.Deactivate -= OnHostFormDeactivate; } catch { }
+      }
+
+      _HookedHostForm = form;
+
+      if (_HookedHostForm is not null && !_HookedHostForm.IsDisposed)
+      {
+        try { _HookedHostForm.Deactivate += OnHostFormDeactivate; } catch { }
+      }
+    }
+
+    private void OnHostFormDeactivate(object? sender, EventArgs e)
+    {
+      if (_Manager is null) return;
+      if (!_Manager.IsAutoHidePopupVisible) return;
+
+      _Manager.HideAutoHidePopup("UI:HostDeactivate");
+      HideAutoHidePopupHost(removeView: false);
+      RequestRender();
+    }
+
     protected override void OnHandleDestroyed(EventArgs e)
     {
       try { ClearOverlayPreview(); } catch { }
       try { DestroyOverlay(); } catch { }
 
       try { HideAutoHidePopupHost(removeView: true); } catch { }
+
+      if (_HookedHostForm is not null && !_HookedHostForm.IsDisposed)
+      {
+        try { _HookedHostForm.Deactivate -= OnHostFormDeactivate; } catch { }
+      }
+      _HookedHostForm = null;
 
       base.OnHandleDestroyed(e);
     }
@@ -324,7 +361,15 @@ namespace VsLikeDoking.UI.Host
     {
       base.OnHandleCreated(e);
 
+      UpdateHostFormHook();
+
       if (_InvalidateQueued) BeginInvoke(new Action(FlushInvalidate));
+    }
+
+    protected override void OnParentChanged(EventArgs e)
+    {
+      base.OnParentChanged(e);
+      UpdateHostFormHook();
     }
 
     protected override void OnLocationChanged(EventArgs e)
