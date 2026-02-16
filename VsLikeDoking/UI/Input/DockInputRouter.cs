@@ -31,6 +31,12 @@ namespace VsLikeDoking.UI.Input
     // AutoHide 탭 입력 보조 상태(탭 전환 루프 완화 목적)
     private bool _AutoHideOpenedOnMouseDown;
 
+    // (PATCH) AutoHide 탭 전환 직후에는 이전 포커스 경로의 지연 dismiss를 무시한다.
+    private DateTime _AutoHideSwitchGuardUntilUtc;
+
+    // (PATCH) AutoHide 활성화 세대. 이전 세대에서 예약된 dismiss 재확인은 무시한다.
+    private int _AutoHideActivationEpoch;
+
     private readonly DockSplitterDrag _SplitterDrag = new();
 
     // Properties =================================================================================
@@ -95,6 +101,8 @@ namespace VsLikeDoking.UI.Input
       _Pressed = DockHitTestResult.None();
 
       _AutoHideOpenedOnMouseDown = false;
+      _AutoHideSwitchGuardUntilUtc = DateTime.MinValue;
+      _AutoHideActivationEpoch = 0;
     }
 
     // Attach / Detach =============================================================================
@@ -307,7 +315,7 @@ namespace VsLikeDoking.UI.Input
       if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
         return;
 
-      // AutoHide 탭을 누른 게 아니면 "바깥 클릭"로 간주하고 Hide 요청을 올린다.
+      // AutoHide 탭을 누른 게 아니면 "바깥 클릭"으로 간주하고 Hide 요청을 올린다.
       // (실제 Hide 여부는 Host에서 DockManager 상태를 보고 판단)
       RaiseRequest(DockInputRequest.DismissAutoHidePopup());
 
@@ -382,7 +390,7 @@ namespace VsLikeDoking.UI.Input
       _AutoHideOpenedOnMouseDown = false;
     }
 
-    private void OnLostFocus(object? sender, EventArgs e)
+    private bool IsWithinAutoHideSwitchGuardWindow()
     {
       if (_SplitterDrag.IsCandidate)
         CancelSplitter(true);
@@ -455,6 +463,7 @@ namespace VsLikeDoking.UI.Input
 
       _SuppressClick = false;
       _AutoHideOpenedOnMouseDown = false;
+      _AutoHideSwitchGuardUntilUtc = DateTime.MinValue;
 
       _Hover = DockHitTestResult.None();
       _Pressed = DockHitTestResult.None();
@@ -481,6 +490,8 @@ namespace VsLikeDoking.UI.Input
           return;
 
         case DockVisualTree.RegionKind.AutoHideTab:
+          _AutoHideActivationEpoch++;
+          _AutoHideSwitchGuardUntilUtc = DateTime.UtcNow.AddMilliseconds(450);
           RaiseRequest(DockInputRequest.ActivateAutoHideTab(pressed.AutoHideStripIndex, pressed.AutoHideTabIndex));
           return;
 
