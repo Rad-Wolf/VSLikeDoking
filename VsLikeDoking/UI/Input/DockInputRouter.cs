@@ -28,10 +28,6 @@ namespace VsLikeDoking.UI.Input
 
     private bool _SuppressClick;
 
-    // (PATCH) AutoHide 탭은 VS처럼 MouseDown에서 즉시 팝업을 연다.
-    // MouseUp에서 다시 토글되지 않도록 _SuppressClick을 켜고, 상태 리셋을 위해 플래그를 둔다.
-    private bool _AutoHideOpenedOnMouseDown;
-
     private readonly DockSplitterDrag _SplitterDrag = new();
 
     // Properties =================================================================================
@@ -95,7 +91,6 @@ namespace VsLikeDoking.UI.Input
       _Hover = DockHitTestResult.None();
       _Pressed = DockHitTestResult.None();
 
-      _AutoHideOpenedOnMouseDown = false;
     }
 
     // Attach / Detach =============================================================================
@@ -297,21 +292,18 @@ namespace VsLikeDoking.UI.Input
       _LeftDown = true;
       _DownPoint = e.Location;
       _SuppressClick = false;
-      _AutoHideOpenedOnMouseDown = false;
 
       var hit = Hit(e.Location);
       SetPressed(hit);
 
-      // (PATCH) AutoHide 탭은 MouseDown에서 즉시 팝업을 연다(VS 스타일).
-      // MouseUp에서 다시 Toggle되지 않도록 클릭을 억제한다.
-      if (hit.Kind == DockVisualTree.RegionKind.AutoHideTab)
-      {
-        _AutoHideOpenedOnMouseDown = true;
-        _SuppressClick = true;
-
-        RaiseRequest(DockInputRequest.ActivateAutoHideTab(hit.AutoHideStripIndex, hit.AutoHideTabIndex));
+      // 탭 전환 루프 방지:
+      // AutoHide 탭/스트립을 누르는 동안은 dismiss를 올리지 않는다.
+      // (탭 전환 중 hit-test가 strip으로 흔들려도 close 요청이 끼어들지 않도록)
+      if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
         return;
-      }
+
+      if (_Hover.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+        return;
 
       // AutoHide 탭을 누른 게 아니면 "바깥 클릭"로 간주하고 Hide 요청을 올린다.
       // (실제 Hide 여부는 Host에서 DockManager 상태를 보고 판단)
@@ -345,8 +337,7 @@ namespace VsLikeDoking.UI.Input
         _LeftDown = false;
 
         _SuppressClick = false;
-        _AutoHideOpenedOnMouseDown = false;
-
+  
         SetPressed(DockHitTestResult.None());
         UpdateHover(e.Location);
         return;
@@ -367,7 +358,6 @@ namespace VsLikeDoking.UI.Input
       _Surface.Capture = false;
 
       _SuppressClick = false;
-      _AutoHideOpenedOnMouseDown = false;
 
       SetPressed(DockHitTestResult.None());
       UpdateHover(e.Location);
@@ -385,463 +375,15 @@ namespace VsLikeDoking.UI.Input
         CancelSplitter(true);
 
       _SuppressClick = false;
-      _AutoHideOpenedOnMouseDown = false;
     }
 
     private void OnLostFocus(object? sender, EventArgs e)
     {
-      var surface = _Surface;
-
       if (_SplitterDrag.IsCandidate)
         CancelSplitter(true);
 
       _SuppressClick = false;
-      _AutoHideOpenedOnMouseDown = false;
-
-      // 포커스가 나가면 hover도 지우는 편이 안전
       SetHover(DockHitTestResult.None());
-
-      if (surface is null || surface.IsDisposed)
-      {
-        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      // Focus 전환 타이밍(특히 AutoHide 탭 클릭 직후)에는 LostFocus가 먼저 오고,
-      // 곧바로 Surface 자식(팝업 호스트/뷰)로 포커스가 이동할 수 있다.
-      // 1틱 지연 후 실제 포커스 상태를 확인해서, Surface 밖으로 나간 경우에만 닫는다.
-      if (!surface.IsHandleCreated)
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      if (surface is null || surface.IsDisposed)
-      {
-        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      // Focus 전환 타이밍(특히 AutoHide 탭 클릭 직후)에는 LostFocus가 먼저 오고,
-      // 곧바로 Surface 자식(팝업 호스트/뷰)로 포커스가 이동할 수 있다.
-      // 1틱 지연 후 실제 포커스 상태를 확인해서, Surface 밖으로 나간 경우에만 닫는다.
-      if (!surface.IsHandleCreated)
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      if (surface is null || surface.IsDisposed)
-      {
-        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      // Focus 전환 타이밍(특히 AutoHide 탭 클릭 직후)에는 LostFocus가 먼저 오고,
-      // 곧바로 Surface 자식(팝업 호스트/뷰)로 포커스가 이동할 수 있다.
-      // 1틱 지연 후 실제 포커스 상태를 확인해서, Surface 밖으로 나간 경우에만 닫는다.
-      if (!surface.IsHandleCreated)
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      if (surface is null || surface.IsDisposed)
-      {
-        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      if (surface is null || surface.IsDisposed)
-      {
-        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      var hostForm = surface.FindForm();
-      if (IsFocusStillWithinHost(hostForm))
-        return;
-
-      // Focus 전환 타이밍(특히 AutoHide 탭 클릭 직후)에는 LostFocus가 먼저 오고,
-      // 곧바로 Surface 자식(팝업 호스트/뷰)로 포커스가 이동할 수 있다.
-      // 1틱 지연 후 실제 포커스 상태를 확인해서, Surface 밖으로 나간 경우에만 닫는다.
-      if (!surface.IsHandleCreated)
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      QueueDismissIfStillUnfocused(surface, retryOnce: true);
-    }
-
-    private void QueueDismissIfStillUnfocused(Control surface, bool retryOnce)
-    {
-      try
-      {
-        surface.BeginInvoke( new Action( () =>
-        {
-          if (_Surface is null || _Surface.IsDisposed)
-          {
-            RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-            return;
-          }
-
-          if (_Surface.ContainsFocus) return;
-
-          var hostForm = _Surface.FindForm();
-          if (IsFocusStillWithinHost(hostForm))
-            return;
-
-          if (retryOnce)
-          {
-            QueueDismissIfStillUnfocused(_Surface, retryOnce: false);
-            return;
-          }
-
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        } ) );
-      }
-      catch
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-      }
-    }
-
-    private static bool IsFocusStillWithinHost(Form? hostForm)
-    {
-      if (hostForm is null || hostForm.IsDisposed) return false;
-
-      if (hostForm.ContainsFocus) return true;
-
-      if (surface is null || surface.IsDisposed)
-      {
-        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      var hostForm = surface.FindForm();
-      if (IsFocusStillWithinHost(hostForm))
-        return;
-
-      // Focus 전환 타이밍(특히 AutoHide 탭 클릭 직후)에는 LostFocus가 먼저 오고,
-      // 곧바로 Surface 자식(팝업 호스트/뷰)로 포커스가 이동할 수 있다.
-      // 1틱 지연 후 실제 포커스 상태를 확인해서, Surface 밖으로 나간 경우에만 닫는다.
-      if (!surface.IsHandleCreated)
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      QueueDismissIfStillUnfocused(surface, retryOnce: true);
-    }
-
-    private void QueueDismissIfStillUnfocused(Control surface, bool retryOnce)
-    {
-      try
-      {
-        surface.BeginInvoke( new Action( () =>
-        {
-          if (_Surface is null || _Surface.IsDisposed)
-          {
-            RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-            return;
-          }
-
-          if (_Surface.ContainsFocus) return;
-
-          var hostForm = _Surface.FindForm();
-          if (IsFocusStillWithinHost(hostForm))
-            return;
-
-          if (retryOnce)
-          {
-            QueueDismissIfStillUnfocused(_Surface, retryOnce: false);
-            return;
-          }
-
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        } ) );
-      }
-      catch
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-      }
-    }
-
-    private static bool IsFocusStillWithinHost(Form? hostForm)
-    {
-      if (hostForm is null || hostForm.IsDisposed) return false;
-
-      if (hostForm.ContainsFocus) return true;
-
-      if (surface is null || surface.IsDisposed)
-      {
-        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      var hostForm = surface.FindForm();
-      if (IsHostStillActive(hostForm))
-        return;
-
-      // Focus 전환 타이밍(특히 AutoHide 탭 클릭 직후)에는 LostFocus가 먼저 오고,
-      // 곧바로 Surface 자식(팝업 호스트/뷰)로 포커스가 이동할 수 있다.
-      // 1틱 지연 후 실제 포커스 상태를 확인해서, Surface 밖으로 나간 경우에만 닫는다.
-      if (!surface.IsHandleCreated)
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      QueueDismissIfStillUnfocused(surface, retryOnce: true);
-    }
-
-    private void QueueDismissIfStillUnfocused(Control surface, bool retryOnce)
-    {
-      try
-      {
-        surface.BeginInvoke( new Action( () =>
-        {
-          var s = _Surface;
-          if (s is null || s.IsDisposed)
-          {
-            RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-            return;
-          }
-
-          if (s.ContainsFocus) return;
-
-          var hostForm = s.FindForm();
-          if (IsHostStillActive(hostForm))
-            return;
-
-          if (retryOnce)
-          {
-            QueueDismissIfStillUnfocused(s, retryOnce: false);
-            return;
-          }
-
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        } ) );
-      }
-      catch
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-      }
-    }
-
-    private static bool IsHostStillActive(Form? hostForm)
-    {
-      if (hostForm is null || hostForm.IsDisposed) return false;
-
-      if (hostForm.ContainsFocus) return true;
-
-      if (surface is null || surface.IsDisposed)
-      {
-        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      var hostForm = surface.FindForm();
-      if (ShouldKeepAutoHidePopupForHostFocus(hostForm))
-        return;
-
-      // Focus 전환 타이밍(특히 AutoHide 탭 클릭 직후)에는 LostFocus가 먼저 오고,
-      // 곧바로 Surface 자식(팝업 호스트/뷰)로 포커스가 이동할 수 있다.
-      // 1틱 지연 후 실제 포커스 상태를 확인해서, Surface 밖으로 나간 경우에만 닫는다.
-      if (!surface.IsHandleCreated)
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      ScheduleAutoHideDismissIfStillUnfocused(surface, retryOnce: true);
-    }
-
-    private void ScheduleAutoHideDismissIfStillUnfocused(Control surface, bool retryOnce)
-    {
-      try
-      {
-        surface.BeginInvoke( new Action( () =>
-        {
-          var s = _Surface;
-          if (s is null || s.IsDisposed)
-          {
-            RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-            return;
-          }
-
-          if (s.ContainsFocus) return;
-
-          var hostForm = s.FindForm();
-          if (ShouldKeepAutoHidePopupForHostFocus(hostForm))
-            return;
-
-          if (retryOnce)
-          {
-            ScheduleAutoHideDismissIfStillUnfocused(s, retryOnce: false);
-            return;
-          }
-
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        } ) );
-      }
-      catch
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-      }
-    }
-
-    private bool ShouldKeepAutoHidePopupForHostFocus(Form? hostForm)
-    {
-      if (hostForm is null || hostForm.IsDisposed) return false;
-
-      if (hostForm.ContainsFocus) return true;
-
-      if (surface is null || surface.IsDisposed)
-      {
-        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      var hostForm = surface.FindForm();
-      if (IsFocusWithinHostFormOrTransient(hostForm))
-        return;
-
-      // Focus 전환 타이밍(특히 AutoHide 탭 클릭 직후)에는 LostFocus가 먼저 오고,
-      // 곧바로 Surface 자식(팝업 호스트/뷰)로 포커스가 이동할 수 있다.
-      // 1틱 지연 후 실제 포커스 상태를 확인해서, Surface 밖으로 나간 경우에만 닫는다.
-      if (!surface.IsHandleCreated)
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      RecheckDismissAutoHidePopupAsync(surface, retryOnce: true);
-    }
-
-    private void RecheckDismissAutoHidePopupAsync(Control surface, bool retryOnce)
-    {
-      try
-      {
-        surface.BeginInvoke( new Action( () =>
-        {
-          var s = _Surface;
-          if (s is null || s.IsDisposed)
-          {
-            RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-            return;
-          }
-
-          if (s.ContainsFocus) return;
-
-          var hostForm = s.FindForm();
-          if (IsFocusWithinHostFormOrTransient(hostForm))
-            return;
-
-          if (retryOnce)
-          {
-            RecheckDismissAutoHidePopupAsync(s, retryOnce: false);
-            return;
-          }
-
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        } ) );
-      }
-      catch
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-      }
-    }
-
-    private bool IsFocusWithinHostFormOrTransient(Form? hostForm)
-    {
-      if (hostForm is null || hostForm.IsDisposed) return false;
-
-      if (hostForm.ContainsFocus) return true;
-
-      if (surface is null || surface.IsDisposed)
-      {
-        RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      var hostForm = surface.FindForm();
-      if (LostFocus_ShouldKeepPopupOpen(hostForm))
-        return;
-
-      // Focus 전환 타이밍(특히 AutoHide 탭 클릭 직후)에는 LostFocus가 먼저 오고,
-      // 곧바로 Surface 자식(팝업 호스트/뷰)로 포커스가 이동할 수 있다.
-      // 1틱 지연 후 실제 포커스 상태를 확인해서, Surface 밖으로 나간 경우에만 닫는다.
-      if (!surface.IsHandleCreated)
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        return;
-      }
-
-      LostFocus_RecheckDismissAsync(surface, retryOnce: true);
-    }
-
-    private void LostFocus_RecheckDismissAsync(Control surface, bool retryOnce)
-    {
-      try
-      {
-        surface.BeginInvoke( new Action( () =>
-        {
-          var s = _Surface;
-          if (s is null || s.IsDisposed)
-          {
-            RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-            return;
-          }
-
-          if (s.ContainsFocus) return;
-
-          var hostForm = s.FindForm();
-          if (LostFocus_ShouldKeepPopupOpen(hostForm))
-            return;
-
-          if (retryOnce)
-          {
-            LostFocus_RecheckDismissAsync(s, retryOnce: false);
-            return;
-          }
-
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-        } ) );
-      }
-      catch
-      {
-        if (!surface.ContainsFocus)
-          RaiseRequest( DockInputRequest.DismissAutoHidePopup( ) );
-      }
-    }
-
-    private bool LostFocus_ShouldKeepPopupOpen(Form? hostForm)
-    {
-      if (hostForm is null || hostForm.IsDisposed) return false;
-
-      if (hostForm.ContainsFocus) return true;
-
-      var active = Form.ActiveForm;
-      if (active is null) return true;
-      if (active.IsDisposed) return false;
-
-      return ReferenceEquals(active, hostForm);
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
@@ -903,7 +445,6 @@ namespace VsLikeDoking.UI.Input
       _DownPoint = Point.Empty;
 
       _SuppressClick = false;
-      _AutoHideOpenedOnMouseDown = false;
 
       _Hover = DockHitTestResult.None();
       _Pressed = DockHitTestResult.None();
