@@ -485,8 +485,6 @@ namespace VsLikeDoking.UI.Input
           return;
 
         case DockVisualTree.RegionKind.AutoHideTab:
-          _AutoHideActivationEpoch++;
-          _AutoHideSwitchGuardUntilUtc = DateTime.UtcNow.AddMilliseconds(450);
           RaiseRequest(DockInputRequest.ActivateAutoHideTab(pressed.AutoHideStripIndex, pressed.AutoHideTabIndex));
           return;
 
