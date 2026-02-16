@@ -2356,6 +2356,7 @@ namespace VsLikeDoking.UI.Host
 
     private void OnSurfaceMouseUp(object? sender, MouseEventArgs e)
     {
+      if (IsDisposed) return;
       if (e.Button != MouseButtons.Right) return;
       if (_Manager is null) return;
 
@@ -2368,7 +2369,8 @@ namespace VsLikeDoking.UI.Host
         var key = GetPersistKeySafe(tv.ContentKey).Trim();
         if (key.Length == 0) return;
 
-        var content = _Manager.Registry.Get(key);
+        IDockContent? content = null;
+        try { content = _Manager.Registry.Get(key); } catch { content = null; }
         if (content is null || content.Kind != DockContentKind.ToolWindow) return;
 
         ShowTabContextMenu(key, e.Location);
@@ -2390,17 +2392,18 @@ namespace VsLikeDoking.UI.Host
 
     private void ShowTabContextMenu(string key, Point clientPoint)
     {
+      if (IsDisposed) return;
       var menu = new ContextMenuStrip();
       menu.Items.Add("AutoHide Left", null, (s, e) => PinToolToAutoHideFromMenu(key, DockAutoHideSide.Left));
       menu.Items.Add("AutoHide Right", null, (s, e) => PinToolToAutoHideFromMenu(key, DockAutoHideSide.Right));
       menu.Items.Add("AutoHide Top", null, (s, e) => PinToolToAutoHideFromMenu(key, DockAutoHideSide.Top));
       menu.Items.Add("AutoHide Bottom", null, (s, e) => PinToolToAutoHideFromMenu(key, DockAutoHideSide.Bottom));
-      menu.Closed += (s, e) => { try { menu.Dispose(); } catch { } };
-      menu.Show(this, clientPoint);
+      SafeShowContextMenu(menu, clientPoint);
     }
 
     private void ShowAutoHideTabContextMenu(string key, Point clientPoint)
     {
+      if (IsDisposed) return;
       if (_Manager is null) return;
 
       var menu = new ContextMenuStrip();
@@ -2409,8 +2412,24 @@ namespace VsLikeDoking.UI.Host
         _Manager.UnpinFromAutoHide(key, targetGroupNodeId: null, makeActive: true, reason: "UI:ContextMenu:UnpinAutoHide");
         MarkVisualDirtyAndRender();
       });
-      menu.Closed += (s, e) => { try { menu.Dispose(); } catch { } };
-      menu.Show(this, clientPoint);
+      SafeShowContextMenu(menu, clientPoint);
+    }
+
+    private void SafeShowContextMenu(ContextMenuStrip menu, Point clientPoint)
+    {
+      if (menu is null) return;
+
+      if (IsDisposed)
+      {
+        try { menu.Dispose(); } catch { }
+        return;
+      }
+
+      try { menu.Show(this, clientPoint); }
+      catch
+      {
+        try { menu.Dispose(); } catch { }
+      }
     }
 
     private void PinToolToAutoHideFromMenu(string key, DockAutoHideSide side)
