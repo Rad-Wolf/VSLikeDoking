@@ -2326,15 +2326,13 @@ namespace VsLikeDoking.UI.Host
           if (!string.IsNullOrWhiteSpace( popupKey ) && !string.IsNullOrWhiteSpace( key ))
             isActive |= string.Equals( popupKey, key, StringComparison.Ordinal );
 
-          var localIndex = ti - start;
-
           var isHoverHot =
             hover.Kind == DockVisualTree.RegionKind.AutoHideTab
-            && (hover.AutoHideTabIndex == ti || (hover.AutoHideStripIndex == si && hover.AutoHideTabIndex == localIndex));
+            && hover.AutoHideTabIndex == ti;
 
           var isPressedHot =
             pressed.Kind == DockVisualTree.RegionKind.AutoHideTab
-            && (pressed.AutoHideTabIndex == ti || (pressed.AutoHideStripIndex == si && pressed.AutoHideTabIndex == localIndex));
+            && pressed.AutoHideTabIndex == ti;
 
           var state = DockRenderer.TabVisualState.Normal;
 
@@ -2552,8 +2550,13 @@ namespace VsLikeDoking.UI.Host
         return;
 
       var hostForm = FindForm();
-      if (hostForm is not null && !hostForm.IsDisposed && ReferenceEquals(Form.ActiveForm, hostForm) && IsDismissSuppressedByAutoHideInteraction())
-        return;
+      if (hostForm is not null && !hostForm.IsDisposed)
+      {
+        var activeForm = Form.ActiveForm;
+        var stillInHost = activeForm is null || ReferenceEquals(activeForm, hostForm);
+        if (stillInHost && IsDismissSuppressedByAutoHideInteraction())
+          return;
+      }
 
       TrySetManagerAutoHidePopup(_Manager.ActiveAutoHideKey ?? string.Empty, visible: false);
 
