@@ -2551,7 +2551,8 @@ namespace VsLikeDoking.UI.Host
       if (_Manager.IsAutoHidePopupVisible && DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
         return;
 
-      if (IsDismissSuppressedByAutoHideInteraction())
+      var hostForm = FindForm();
+      if (hostForm is not null && !hostForm.IsDisposed && ReferenceEquals(Form.ActiveForm, hostForm) && IsDismissSuppressedByAutoHideInteraction())
         return;
 
       TrySetManagerAutoHidePopup(_Manager.ActiveAutoHideKey ?? string.Empty, visible: false);
