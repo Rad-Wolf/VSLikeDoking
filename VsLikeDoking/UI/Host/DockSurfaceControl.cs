@@ -64,6 +64,7 @@ namespace VsLikeDoking.UI.Host
 
     private bool _AutoHideActivating;
     private DateTime _AutoHideActivationHoldUntilUtc;
+    private bool _PendingDismissAutoHideOnMouseUp;
 
     // AutoHide Popup Host ========================================================================
 
@@ -83,6 +84,9 @@ namespace VsLikeDoking.UI.Host
     private Size _AutoHideResizeStartSize;
     private DockAutoHideSide _AutoHideResizeSide;
     private string? _AutoHideResizeKey;
+
+    // Host Form deactivate hook (AutoHide 강제 닫기) ================================================
+    private Form? _HookedHostForm;
 
     // Content MouseDown Forwarding (AutoHide Dismiss) =============================================
 
@@ -217,6 +221,7 @@ namespace VsLikeDoking.UI.Host
 
       _AutoHideActivating = false;
       _AutoHideActivationHoldUntilUtc = DateTime.MinValue;
+      _PendingDismissAutoHideOnMouseUp = false;
 
       _AutoHidePopupHost = null;
       _AutoHidePopupKey = null;
@@ -310,12 +315,48 @@ namespace VsLikeDoking.UI.Host
       DrawAutoHide(g);
     }
 
+    private void UpdateHostFormHook()
+    {
+      var form = FindForm();
+      if (ReferenceEquals(_HookedHostForm, form)) return;
+
+      if (_HookedHostForm is not null && !_HookedHostForm.IsDisposed)
+      {
+        try { _HookedHostForm.Deactivate -= OnHostFormDeactivate; } catch { }
+      }
+
+      _HookedHostForm = form;
+
+      if (_HookedHostForm is not null && !_HookedHostForm.IsDisposed)
+      {
+        try { _HookedHostForm.Deactivate += OnHostFormDeactivate; } catch { }
+      }
+    }
+
+    private void OnHostFormDeactivate(object? sender, EventArgs e)
+    {
+      if (_Manager is null) return;
+      if (!_Manager.IsAutoHidePopupVisible) return;
+
+      _PendingDismissAutoHideOnMouseUp = false;
+
+      _Manager.HideAutoHidePopup("UI:HostDeactivate");
+      HideAutoHidePopupHost(removeView: false);
+      RequestRender();
+    }
+
     protected override void OnHandleDestroyed(EventArgs e)
     {
       try { ClearOverlayPreview(); } catch { }
       try { DestroyOverlay(); } catch { }
 
       try { HideAutoHidePopupHost(removeView: true); } catch { }
+
+      if (_HookedHostForm is not null && !_HookedHostForm.IsDisposed)
+      {
+        try { _HookedHostForm.Deactivate -= OnHostFormDeactivate; } catch { }
+      }
+      _HookedHostForm = null;
 
       base.OnHandleDestroyed(e);
     }
@@ -324,7 +365,15 @@ namespace VsLikeDoking.UI.Host
     {
       base.OnHandleCreated(e);
 
+      UpdateHostFormHook();
+
       if (_InvalidateQueued) BeginInvoke(new Action(FlushInvalidate));
+    }
+
+    protected override void OnParentChanged(EventArgs e)
+    {
+      base.OnParentChanged(e);
+      UpdateHostFormHook();
     }
 
     protected override void OnLocationChanged(EventArgs e)
@@ -1496,6 +1545,13 @@ namespace VsLikeDoking.UI.Host
       _InputRouter.NotifyExternalMouseDown();
     }
 
+    private void OnForwardedMouseUp(object? sender, MouseEventArgs e)
+    {
+      if (e.Button != MouseButtons.Left) return;
+
+      TryFlushPendingAutoHideDismiss();
+    }
+
     private void OnForwardedKeyDown(object? sender, KeyEventArgs e)
     {
       if (e.KeyCode != Keys.Escape) return;
@@ -1552,6 +1608,7 @@ namespace VsLikeDoking.UI.Host
       if (!_ForwardedMouseDownHooks.Add(c)) return;
 
       c.MouseDown += OnForwardedMouseDown;
+      c.MouseUp += OnForwardedMouseUp;
       c.KeyDown += OnForwardedKeyDown;
       c.Disposed += OnForwardedDisposed;
 
@@ -1583,6 +1640,7 @@ namespace VsLikeDoking.UI.Host
       if (!_ForwardedMouseDownHooks.Remove(c)) return;
 
       try { c.MouseDown -= OnForwardedMouseDown; } catch { }
+      try { c.MouseUp -= OnForwardedMouseUp; } catch { }
       try { c.KeyDown -= OnForwardedKeyDown; } catch { }
       try { c.Disposed -= OnForwardedDisposed; } catch { }
 
@@ -1603,6 +1661,7 @@ namespace VsLikeDoking.UI.Host
         if (c is null) continue;
 
         try { c.MouseDown -= OnForwardedMouseDown; } catch { }
+        try { c.MouseUp -= OnForwardedMouseUp; } catch { }
         try { c.KeyDown -= OnForwardedKeyDown; } catch { }
         try { c.Disposed -= OnForwardedDisposed; } catch { }
         try { c.ControlAdded -= OnForwardedControlAdded; } catch { }
@@ -2357,6 +2416,12 @@ namespace VsLikeDoking.UI.Host
     private void OnSurfaceMouseUp(object? sender, MouseEventArgs e)
     {
       if (IsDisposed) return;
+      if (e.Button == MouseButtons.Left)
+      {
+        TryFlushPendingAutoHideDismiss();
+        return;
+      }
+
       if (e.Button != MouseButtons.Right) return;
       if (_Manager is null) return;
 
@@ -2501,6 +2566,9 @@ namespace VsLikeDoking.UI.Host
       if (_Manager is null) return;
       if (_AutoHideActivating) return;
 
+      // 새 활성화 시점에는 이전 클릭에서 남은 deferred dismiss를 폐기한다.
+      _PendingDismissAutoHideOnMouseUp = false;
+
       if (!TryResolveAutoHideTabIndices( stripIndex, tabIndex, out _, out var globalIndex ))
         return;
 
@@ -2521,14 +2589,11 @@ namespace VsLikeDoking.UI.Host
       }
 
       _AutoHideActivating = true;
-      _AutoHideActivationHoldUntilUtc = DateTime.UtcNow.AddMilliseconds(700);
+      _AutoHideActivationHoldUntilUtc = DateTime.UtcNow.AddMilliseconds(250);
       try
       {
         // "Show" 우선(토글은 상태 불일치 시 반대로 동작 가능)
-        var shown =
-          TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key, "UI:AutoHideTab" )
-          || TryInvokeByReflection( _Manager, "ShowAutoHidePopup", key )
-          || TrySetManagerAutoHidePopup( key, visible: true );
+        var shown = _Manager.ShowAutoHidePopup( key, "UI:AutoHideTab" );
 
         // ShowAutoHidePopup 내부에서 ActiveContent까지 맞추므로 여기서 다시 SetActiveContent를 호출하면
         // 동일 키 재진입으로 토글-off가 발생할 수 있다.
@@ -2546,19 +2611,25 @@ namespace VsLikeDoking.UI.Host
       if (_Manager is null) return;
       if (_AutoHideActivating) return;
 
+      if (ShouldDeferDismissAutoHideByPointerState())
+      {
+        _PendingDismissAutoHideOnMouseUp = true;
+        return;
+      }
+
       if (_Manager.IsAutoHidePopupVisible && DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
         return;
 
-      var hostForm = FindForm();
-      if (hostForm is not null && !hostForm.IsDisposed)
+      if (!_Manager.IsAutoHidePopupVisible)
       {
-        var activeForm = Form.ActiveForm;
-        var stillInHost = activeForm is null || ReferenceEquals(activeForm, hostForm);
-        if (stillInHost && IsDismissSuppressedByAutoHideInteraction())
-          return;
+        HideAutoHidePopupHost(removeView: false);
+        return;
       }
 
-      TrySetManagerAutoHidePopup(_Manager.ActiveAutoHideKey ?? string.Empty, visible: false);
+      if (IsDismissSuppressedByAutoHideInteraction())
+        return;
+
+      _Manager.HideAutoHidePopup("UI:AutoHideDismiss");
 
       // UI 즉시 숨김(Manager 이벤트 지연/누락 대비)
       HideAutoHidePopupHost(removeView: false);
@@ -2566,18 +2637,57 @@ namespace VsLikeDoking.UI.Host
       RequestRender();
     }
 
-
-    private bool IsDismissSuppressedByAutoHideInteraction()
+    private bool ShouldDeferDismissAutoHideByPointerState()
     {
+      if (Control.MouseButtons.HasFlag(MouseButtons.Left))
+        return true;
+
+      if (_InputRouter.IsLeftButtonDown)
+        return true;
+
       if (_InputRouter.Pressed.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
         return true;
 
       if (_InputRouter.Hover.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
         return true;
 
+      return false;
+    }
+
+    private void TryFlushPendingAutoHideDismiss()
+    {
+      if (!_PendingDismissAutoHideOnMouseUp) return;
+
+      if (_Manager is null)
+      {
+        _PendingDismissAutoHideOnMouseUp = false;
+        return;
+      }
+
+      if (Control.MouseButtons.HasFlag(MouseButtons.Left) || _InputRouter.IsLeftButtonDown)
+        return;
+
+      _PendingDismissAutoHideOnMouseUp = false;
+
+      HandleDismissAutoHidePopup();
+    }
+
+
+    private bool IsDismissSuppressedByAutoHideInteraction()
+    {
       Point client;
       try { client = PointToClient(Control.MousePosition); }
       catch { return false; }
+
+      if (_AutoHidePopupHost is not null && !_AutoHidePopupHost.IsDisposed)
+      {
+        Rectangle popupBounds;
+        try { popupBounds = _AutoHidePopupHost.Bounds; }
+        catch { popupBounds = Rectangle.Empty; }
+
+        if (!popupBounds.IsEmpty && popupBounds.Contains(client))
+          return true;
+      }
 
       var hit = DockHitTest.HitTest(_Tree, client);
       if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
