@@ -109,7 +109,6 @@ namespace VsLikeDoking.UI.Input
       surface.MouseUp += OnMouseUp;
       surface.MouseLeave += OnMouseLeave;
       surface.MouseCaptureChanged += OnMouseCaptureChanged;
-      surface.LostFocus += OnLostFocus;
       surface.KeyDown += OnKeyDown;
     }
 
@@ -125,7 +124,6 @@ namespace VsLikeDoking.UI.Input
       s.MouseUp -= OnMouseUp;
       s.MouseLeave -= OnMouseLeave;
       s.MouseCaptureChanged -= OnMouseCaptureChanged;
-      s.LostFocus -= OnLostFocus;
       s.KeyDown -= OnKeyDown;
 
       _Surface = null;
@@ -305,7 +303,7 @@ namespace VsLikeDoking.UI.Input
       if (_Hover.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
         return;
 
-      // AutoHide 탭을 누른 게 아니면 "바깥 클릭"로 간주하고 Hide 요청을 올린다.
+      // AutoHide 탭을 누른 게 아니면 "바깥 클릭"으로 간주하고 Hide 요청을 올린다.
       // (실제 Hide 여부는 Host에서 DockManager 상태를 보고 판단)
       RaiseRequest(DockInputRequest.DismissAutoHidePopup());
 
@@ -487,6 +485,8 @@ namespace VsLikeDoking.UI.Input
           return;
 
         case DockVisualTree.RegionKind.AutoHideTab:
+          _AutoHideActivationEpoch++;
+          _AutoHideSwitchGuardUntilUtc = DateTime.UtcNow.AddMilliseconds(450);
           RaiseRequest(DockInputRequest.ActivateAutoHideTab(pressed.AutoHideStripIndex, pressed.AutoHideTabIndex));
           return;
 
