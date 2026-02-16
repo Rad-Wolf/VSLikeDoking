@@ -465,11 +465,39 @@ namespace VsLikeDoking.UI.Input
 
       if (hostForm.ContainsFocus) return true;
 
+      if (IsAutoHideInteractionInProgress()) return true;
+
       var active = Form.ActiveForm;
       if (active is null) return true;
       if (active.IsDisposed) return false;
 
       return ReferenceEquals(active, hostForm);
+    }
+
+
+    private bool IsAutoHideInteractionInProgress()
+    {
+      if (_Pressed.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+        return true;
+
+      if (_Hover.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
+        return true;
+
+      if (_Surface is null || _Surface.IsDisposed || _Tree is null)
+        return false;
+
+      Point client;
+      try
+      {
+        client = _Surface.PointToClient(Control.MousePosition);
+      }
+      catch
+      {
+        return false;
+      }
+
+      var hit = DockHitTest.HitTest(_Tree, client);
+      return hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip;
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
