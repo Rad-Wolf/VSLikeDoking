@@ -1570,6 +1570,18 @@ namespace VsLikeDoking.UI.Host
       // (PATCH) 팝업 호스트(그립 포함) 내부 클릭은 바깥 클릭이 아니다.
       if (IsFromAutoHidePopupHost(c)) return;
 
+      // Sender 체인이 어긋난 경우(동적 재부모/Handle 재생성)에도
+      // 현재 포인터가 팝업 호스트 영역 안이면 내부 클릭으로 본다.
+      if (_AutoHidePopupHost is not null && !_AutoHidePopupHost.IsDisposed && _AutoHidePopupHost.Visible)
+      {
+        try
+        {
+          var client = PointToClient(Control.MousePosition);
+          if (_AutoHidePopupHost.Bounds.Contains(client)) return;
+        }
+        catch { }
+      }
+
       // 팝업 컨텐츠 내부 클릭은 바깥 클릭이 아니다.
       if (IsFromActiveAutoHidePopupView(c)) return;
 
@@ -1587,13 +1599,6 @@ namespace VsLikeDoking.UI.Host
         _PendingExternalOutsideClickDismiss = false;
         HandleDismissAutoHidePopup();
       }
-
-      TryFlushPendingAutoHideDismiss();
-    }
-
-    private void OnForwardedMouseUp(object? sender, MouseEventArgs e)
-    {
-      if (e.Button != MouseButtons.Left) return;
 
       TryFlushPendingAutoHideDismiss();
     }
