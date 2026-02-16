@@ -608,10 +608,10 @@ namespace VsLikeDoking.UI.Visual
       var maxExtent = GetMetricsInt("AutoHideTabMaxExtent", 120);
       if (maxExtent < minExtent) maxExtent = minExtent;
 
-      var verticalMinExtent = GetMetricsInt("AutoHideVerticalTabMinExtent", 36);
-      if (verticalMinExtent < 16) verticalMinExtent = 16;
+      var verticalMinExtent = GetMetricsInt("AutoHideVerticalTabMinExtent", 20);
+      if (verticalMinExtent < 12) verticalMinExtent = 12;
 
-      var verticalMaxExtent = GetMetricsInt("AutoHideVerticalTabMaxExtent", 96);
+      var verticalMaxExtent = GetMetricsInt("AutoHideVerticalTabMaxExtent", 72);
       if (verticalMaxExtent < verticalMinExtent) verticalMaxExtent = verticalMinExtent;
 
       tabExtent = MathEx.Clamp(tabExtent, minExtent, maxExtent);
@@ -657,12 +657,26 @@ namespace VsLikeDoking.UI.Visual
       var perTab = tabExtent;
       if (validItems.Count > 0)
       {
-        var totalGap = gap * Math.Max(0, validItems.Count - 1);
-        var fitExtent = (usable - totalGap) / validItems.Count;
-        perTab = Math.Min(perTab, fitExtent);
+        var tabCount = validItems.Count;
+        var totalGap = gap * Math.Max(0, tabCount - 1);
+
+        if (totalGap >= usable)
+        {
+          gap = 0;
+          totalGap = 0;
+        }
+
+        var fitExtent = (usable - totalGap) / tabCount;
+        if (fitExtent <= 0) return 0;
+
+        var maxByFit = Math.Min(verticalMaxExtent, fitExtent);
+        if (maxByFit < verticalMinExtent)
+          perTab = Math.Max(12, maxByFit);
+        else
+          perTab = Math.Min(tabExtent, maxByFit);
       }
 
-      perTab = MathEx.Clamp(perTab, verticalMinExtent, verticalMaxExtent);
+      perTab = MathEx.Clamp(perTab, 12, verticalMaxExtent);
 
       for (int i = 0; i < validItems.Count; i++)
       {
@@ -693,7 +707,7 @@ namespace VsLikeDoking.UI.Visual
 
       var minRequired = isHorizontal
         ? Math.Max(8, GetMetricsInt("AutoHideTabMinExtent", 28))
-        : Math.Max(16, GetMetricsInt("AutoHideVerticalTabMinExtent", 36));
+        : Math.Max(12, GetMetricsInt("AutoHideVerticalTabMinExtent", 20));
 
       if (usable < minRequired) return false;
 

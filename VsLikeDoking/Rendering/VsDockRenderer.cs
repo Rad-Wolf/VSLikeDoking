@@ -189,38 +189,23 @@ namespace VsLikeDoking.Rendering
       if (g is null) throw new ArgumentNullException(nameof(g));
       text ??= string.Empty;
 
-      // AutoHide는 매우 얇아질 수 있다. (0/음수/극소 영역이면 그리지 않는다)
       if (string.IsNullOrWhiteSpace(text)) return;
       if (bounds.Width <= 2 || bounds.Height <= 2) return;
 
-      // TextRenderer는 회전이 안되므로 DrawString + 회전을 사용한다.
-      // (AutoHide는 얇아서 주로 세로 배치가 필요)
       var font = _Cache.GetFont(Metrics.TabFont);
-
       var centerX = bounds.Left + (bounds.Width / 2f);
       var centerY = bounds.Top + (bounds.Height / 2f);
-
       var angle = dir == AutoHideTextDirection.Rotate90 ? 90f : -90f;
 
-      Matrix? old = null;
-      Matrix? m = null;
-
+      var state = g.Save();
       try
       {
-        old = g.Transform;
+        g.TranslateTransform(centerX, centerY);
+        g.RotateTransform(angle);
 
-        m = old.Clone();
-        m.Translate(centerX, centerY, MatrixOrder.Append);
-        m.Rotate(angle, MatrixOrder.Append);
-        g.Transform = m;
-
-        // 회전 후 좌표계에서 "가로"로 그리기 위해, 폭/높이를 뒤집은 가상의 텍스트 영역을 만든다.
-        var w = Math.Max(1, bounds.Height);
-        // 회전 후 텍스트 baseline/자모 영역이 잘리는 것을 막기 위해
-        // 얇은 strip에서도 최소 높이를 보장한다.
-        var h = Math.Max(16, bounds.Width + 8);
-
-        var local = new RectangleF(-w / 2f, -h / 2f, w, h);
+        var localWidth = Math.Max(1f, bounds.Height - 4f);
+        var localHeight = Math.Max(1f, bounds.Width - 2f);
+        var local = new RectangleF(-localWidth / 2f, -localHeight / 2f, localWidth, localHeight);
 
         using var sf = new StringFormat
         {
@@ -230,23 +215,12 @@ namespace VsLikeDoking.Rendering
           FormatFlags = StringFormatFlags.NoWrap,
         };
 
-        // IMPORTANT:
-        // - _Cache.GetBrush(...)는 캐시가 소유한다. using/Dispose 하면 다음 프레임부터 "disposed brush"로 예외가 난다.
         var br = _Cache.GetBrush(color);
         g.DrawString(text, font, br, local, sf);
       }
       finally
       {
-        if (old is not null)
-        {
-          try { g.Transform = old; } catch { }
-          try { old.Dispose(); } catch { }
-        }
-
-        if (m is not null)
-        {
-          try { m.Dispose(); } catch { }
-        }
+        g.Restore(state);
       }
     }
 
