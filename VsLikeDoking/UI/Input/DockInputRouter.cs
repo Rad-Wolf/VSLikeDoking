@@ -35,6 +35,9 @@ namespace VsLikeDoking.UI.Input
     // (PATCH) AutoHide 탭 전환 직후에는 이전 포커스 경로의 지연 dismiss를 무시한다.
     private DateTime _AutoHideSwitchGuardUntilUtc;
 
+    // (PATCH) AutoHide 활성화 세대. 이전 세대에서 예약된 dismiss 재확인은 무시한다.
+    private int _AutoHideActivationEpoch;
+
     private readonly DockSplitterDrag _SplitterDrag = new();
 
     // Properties =================================================================================
@@ -100,6 +103,7 @@ namespace VsLikeDoking.UI.Input
 
       _AutoHideOpenedOnMouseDown = false;
       _AutoHideSwitchGuardUntilUtc = DateTime.MinValue;
+      _AutoHideActivationEpoch = 0;
     }
 
     // Attach / Detach =============================================================================
@@ -313,6 +317,7 @@ namespace VsLikeDoking.UI.Input
         _AutoHideOpenedOnMouseDown = true;
         _SuppressClick = true;
         _AutoHideSwitchGuardUntilUtc = DateTime.UtcNow.AddMilliseconds(450);
+        _AutoHideActivationEpoch++;
 
         RaiseRequest(DockInputRequest.ActivateAutoHideTab(hit.AutoHideStripIndex, hit.AutoHideTabIndex));
         return;
@@ -434,10 +439,11 @@ namespace VsLikeDoking.UI.Input
       if (LostFocus_ShouldKeepPopupOpen(hostForm))
         return;
 
-      LostFocus_RecheckDismissAsync(surface, retryOnce: true);
+      var activationEpochAtLostFocus = _AutoHideActivationEpoch;
+      LostFocus_RecheckDismissAsync(surface, retryOnce: true, activationEpochAtLostFocus);
     }
 
-    private void LostFocus_RecheckDismissAsync(Control surface, bool retryOnce)
+    private void LostFocus_RecheckDismissAsync(Control surface, bool retryOnce, int expectedActivationEpoch)
     {
       try
       {
@@ -452,6 +458,7 @@ namespace VsLikeDoking.UI.Input
 
           if (s.ContainsFocus) return;
           if (IsWithinAutoHideSwitchGuardWindow()) return;
+          if (expectedActivationEpoch != _AutoHideActivationEpoch) return;
 
           var hostForm = s.FindForm();
           if (LostFocus_ShouldKeepPopupOpen(hostForm))
@@ -459,7 +466,7 @@ namespace VsLikeDoking.UI.Input
 
           if (retryOnce)
           {
-            LostFocus_RecheckDismissAsync(s, retryOnce: false);
+            LostFocus_RecheckDismissAsync(s, retryOnce: false, expectedActivationEpoch);
             return;
           }
 
@@ -601,6 +608,7 @@ namespace VsLikeDoking.UI.Input
           return;
 
         case DockVisualTree.RegionKind.AutoHideTab:
+          _AutoHideActivationEpoch++;
           RaiseRequest(DockInputRequest.ActivateAutoHideTab(pressed.AutoHideStripIndex, pressed.AutoHideTabIndex));
           return;
 
