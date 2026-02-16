@@ -67,6 +67,7 @@ namespace VsLikeDoking.UI.Host
     private bool _PendingDismissAutoHideOnMouseUp;
     private bool _PendingDismissStartedFromAutoHideInteraction;
     private bool _PendingExternalOutsideClickDismiss;
+    private bool _ConsumeFirstDismissAfterAutoHideActivate;
     private const int AutoHidePopupContentPadding = 4;
     private const int AutoHideResizeGripThickness = 6;
 
@@ -228,6 +229,7 @@ namespace VsLikeDoking.UI.Host
       _PendingDismissAutoHideOnMouseUp = false;
       _PendingDismissStartedFromAutoHideInteraction = false;
       _PendingExternalOutsideClickDismiss = false;
+      _ConsumeFirstDismissAfterAutoHideActivate = false;
 
       _AutoHidePopupHost = null;
       _AutoHidePopupKey = null;
@@ -347,6 +349,7 @@ namespace VsLikeDoking.UI.Host
       _PendingDismissAutoHideOnMouseUp = false;
       _PendingDismissStartedFromAutoHideInteraction = false;
       _PendingExternalOutsideClickDismiss = false;
+      _ConsumeFirstDismissAfterAutoHideActivate = false;
 
       _Manager.HideAutoHidePopup("UI:HostDeactivate");
       HideAutoHidePopupHost(removeView: false);
@@ -707,6 +710,7 @@ namespace VsLikeDoking.UI.Host
 
       if (!_Manager.IsAutoHidePopupVisible)
       {
+        _ConsumeFirstDismissAfterAutoHideActivate = false;
         HideAutoHidePopupHost(removeView: false);
         return;
       }
@@ -2648,6 +2652,7 @@ namespace VsLikeDoking.UI.Host
       _PendingDismissAutoHideOnMouseUp = false;
       _PendingDismissStartedFromAutoHideInteraction = false;
       _PendingExternalOutsideClickDismiss = false;
+      _ConsumeFirstDismissAfterAutoHideActivate = true;
 
       if (!TryResolveAutoHideTabIndices( stripIndex, tabIndex, out _, out var globalIndex ))
         return;
@@ -2701,6 +2706,16 @@ namespace VsLikeDoking.UI.Host
       if (_Manager.IsAutoHidePopupVisible && DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
         return;
 
+      // 탭 전환 직후 stale dismiss 1회를 흡수해 깜빡임/무한 여닫기 레이스를 줄인다.
+      if (_ConsumeFirstDismissAfterAutoHideActivate)
+      {
+        if (IsDismissSuppressedByAutoHideInteraction())
+          return;
+
+        _ConsumeFirstDismissAfterAutoHideActivate = false;
+        return;
+      }
+
       if (!_Manager.IsAutoHidePopupVisible)
       {
         HideAutoHidePopupHost(removeView: false);
@@ -2711,6 +2726,8 @@ namespace VsLikeDoking.UI.Host
         return;
 
       _Manager.HideAutoHidePopup("UI:AutoHideDismiss");
+
+      _ConsumeFirstDismissAfterAutoHideActivate = false;
 
       // UI 즉시 숨김(Manager 이벤트 지연/누락 대비)
       HideAutoHidePopupHost(removeView: false);
