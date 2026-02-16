@@ -28,8 +28,7 @@ namespace VsLikeDoking.UI.Input
 
     private bool _SuppressClick;
 
-    // (PATCH) AutoHide 탭은 VS처럼 MouseDown에서 즉시 팝업을 연다.
-    // MouseUp에서 다시 토글되지 않도록 _SuppressClick을 켜고, 상태 리셋을 위해 플래그를 둔다.
+    // AutoHide 탭 입력 보조 상태(탭 전환 루프 완화 목적)
     private bool _AutoHideOpenedOnMouseDown;
 
     // (PATCH) AutoHide 탭 전환 직후에는 이전 포커스 경로의 지연 dismiss를 무시한다.
@@ -310,18 +309,11 @@ namespace VsLikeDoking.UI.Input
       var hit = Hit(e.Location);
       SetPressed(hit);
 
-      // (PATCH) AutoHide 탭은 MouseDown에서 즉시 팝업을 연다(VS 스타일).
-      // MouseUp에서 다시 Toggle되지 않도록 클릭을 억제한다.
+      // 탭 전환 루프 방지:
+      // AutoHide 탭은 MouseDown 즉시 활성화하지 않고 MouseUp 클릭 확정 시 활성화한다.
+      // (누르는 순간 포커스 전환/지연 dismiss가 교차하며 열림/닫힘 진동이 생기는 케이스 차단)
       if (hit.Kind == DockVisualTree.RegionKind.AutoHideTab)
-      {
-        _AutoHideOpenedOnMouseDown = true;
-        _SuppressClick = true;
-        _AutoHideSwitchGuardUntilUtc = DateTime.UtcNow.AddMilliseconds(450);
-        _AutoHideActivationEpoch++;
-
-        RaiseRequest(DockInputRequest.ActivateAutoHideTab(hit.AutoHideStripIndex, hit.AutoHideTabIndex));
         return;
-      }
 
       // AutoHide 탭을 누른 게 아니면 "바깥 클릭"으로 간주하고 Hide 요청을 올린다.
       // (실제 Hide 여부는 Host에서 DockManager 상태를 보고 판단)
@@ -609,6 +601,7 @@ namespace VsLikeDoking.UI.Input
 
         case DockVisualTree.RegionKind.AutoHideTab:
           _AutoHideActivationEpoch++;
+          _AutoHideSwitchGuardUntilUtc = DateTime.UtcNow.AddMilliseconds(450);
           RaiseRequest(DockInputRequest.ActivateAutoHideTab(pressed.AutoHideStripIndex, pressed.AutoHideTabIndex));
           return;
 
