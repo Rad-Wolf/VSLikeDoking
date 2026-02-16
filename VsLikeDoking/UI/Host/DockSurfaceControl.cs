@@ -66,6 +66,7 @@ namespace VsLikeDoking.UI.Host
     private DateTime _AutoHideActivationHoldUntilUtc;
     private bool _PendingDismissAutoHideOnMouseUp;
     private bool _PendingDismissStartedFromAutoHideInteraction;
+    private bool _PendingExternalOutsideClickDismiss;
     private const int AutoHidePopupContentPadding = 4;
     private const int AutoHideResizeGripThickness = 6;
 
@@ -226,6 +227,7 @@ namespace VsLikeDoking.UI.Host
       _AutoHideActivationHoldUntilUtc = DateTime.MinValue;
       _PendingDismissAutoHideOnMouseUp = false;
       _PendingDismissStartedFromAutoHideInteraction = false;
+      _PendingExternalOutsideClickDismiss = false;
 
       _AutoHidePopupHost = null;
       _AutoHidePopupKey = null;
@@ -344,6 +346,7 @@ namespace VsLikeDoking.UI.Host
 
       _PendingDismissAutoHideOnMouseUp = false;
       _PendingDismissStartedFromAutoHideInteraction = false;
+      _PendingExternalOutsideClickDismiss = false;
 
       _Manager.HideAutoHidePopup("UI:HostDeactivate");
       HideAutoHidePopupHost(removeView: false);
@@ -1570,7 +1573,22 @@ namespace VsLikeDoking.UI.Host
       // 팝업 컨텐츠 내부 클릭은 바깥 클릭이 아니다.
       if (IsFromActiveAutoHidePopupView(c)) return;
 
-      _InputRouter.NotifyExternalMouseDown();
+      // 바깥 클릭 dismiss는 MouseDown 즉시 처리하지 않고 MouseUp 확정 시점으로 미룬다.
+      // (탭 전환/포인터 이동 중 stale dismiss가 끼어드는 경로 차단)
+      _PendingExternalOutsideClickDismiss = true;
+    }
+
+    private void OnForwardedMouseUp(object? sender, MouseEventArgs e)
+    {
+      if (e.Button != MouseButtons.Left) return;
+
+      if (_PendingExternalOutsideClickDismiss)
+      {
+        _PendingExternalOutsideClickDismiss = false;
+        HandleDismissAutoHidePopup();
+      }
+
+      TryFlushPendingAutoHideDismiss();
     }
 
     private void OnForwardedMouseUp(object? sender, MouseEventArgs e)
@@ -2597,6 +2615,7 @@ namespace VsLikeDoking.UI.Host
       // 새 활성화 시점에는 이전 클릭에서 남은 deferred dismiss를 폐기한다.
       _PendingDismissAutoHideOnMouseUp = false;
       _PendingDismissStartedFromAutoHideInteraction = false;
+      _PendingExternalOutsideClickDismiss = false;
 
       if (!TryResolveAutoHideTabIndices( stripIndex, tabIndex, out _, out var globalIndex ))
         return;
