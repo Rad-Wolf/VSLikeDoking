@@ -2546,7 +2546,7 @@ namespace VsLikeDoking.UI.Host
       if (_Manager is null) return;
       if (_AutoHideActivating) return;
 
-      if (_Manager.IsAutoHidePopupVisible && DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
+      if (DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
         return;
 
       if (!_Manager.IsAutoHidePopupVisible)
