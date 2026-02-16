@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Reflection;
 
@@ -637,13 +638,34 @@ namespace VsLikeDoking.UI.Visual
       var y = stripBounds.Y + pad;
       var yLimit = stripBounds.Bottom - pad;
 
+      var verticalItems = new List<(string Key, Size? PopupSize)>();
       foreach (var item in items)
       {
         if (!TryGetPersistKeyAndPopupSize(item, out var key, out var popupSize)) continue;
 
-        if (y + tabExtent > yLimit) break;
+        verticalItems.Add((key, popupSize));
+      }
 
-        var tabBounds = new Rectangle(stripBounds.X, y, stripBounds.Width, tabExtent);
+      if (verticalItems.Count == 0) return 0;
+
+      var available = Math.Max(0, yLimit - y);
+      if (available <= 0) return 0;
+
+      var each = Math.Max(1, available / verticalItems.Count);
+      var yCur = y;
+
+      for (int i = 0; i < verticalItems.Count; i++)
+      {
+        var key = verticalItems[i].Key;
+        var popupSize = verticalItems[i].PopupSize;
+
+        var remain = yLimit - yCur;
+        if (remain <= 0) break;
+
+        var tabH = (i == verticalItems.Count - 1) ? remain : Math.Min(each, remain);
+        if (tabH < 8) break;
+
+        var tabBounds = new Rectangle(stripBounds.X, yCur, stripBounds.Width, tabH);
         var isActive = !string.IsNullOrEmpty(activeKey) && string.Equals(activeKey, key, StringComparison.Ordinal);
 
         tree.AddAutoHideTab(stripIndex, key, tabBounds, isActive, popupSize);
