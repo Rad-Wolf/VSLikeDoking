@@ -890,6 +890,8 @@ namespace VsLikeDoking.UI.Host
 
       UpdateAutoHidePopupHostPadding(side);
 
+      UpdateAutoHidePopupHostPadding(side);
+
       // (PATCH) Host 크기 바뀐 직후 View가 0 사이즈로 남는 것 방지
       if (_AutoHidePopupView is not null && !_AutoHidePopupView.IsDisposed && ReferenceEquals(_AutoHidePopupView.Parent, _AutoHidePopupHost))
       {
