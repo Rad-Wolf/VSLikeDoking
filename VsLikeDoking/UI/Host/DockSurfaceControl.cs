@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Reflection;
 using System.Windows.Forms;
@@ -71,6 +72,7 @@ namespace VsLikeDoking.UI.Host
     private DateTime _SuppressAutoHideActivateUntilUtc;
     private const int AutoHidePopupContentPadding = 4;
     private const int AutoHideResizeGripThickness = 6;
+    private const bool AutoHideTraceEnabled = true;
 
     // AutoHide Popup Host ========================================================================
 
@@ -1478,6 +1480,9 @@ namespace VsLikeDoking.UI.Host
     {
       if (_Manager is null) return;
 
+      if (req.Kind is DockInputRouter.DockInputRequestKind.ActivateAutoHideTab or DockInputRouter.DockInputRequestKind.DismissAutoHidePopup)
+        TraceAutoHide("OnInputRequest", req.Kind.ToString());
+
       if (_TabDragDrop.State == DockDragDropService.DragState.Dragging)
       {
         if (req.Kind is DockInputRouter.DockInputRequestKind.ActivateTab
@@ -1595,6 +1600,7 @@ namespace VsLikeDoking.UI.Host
       // 바깥 클릭 dismiss는 MouseDown 즉시 처리하지 않고 MouseUp 확정 시점으로 미룬다.
       // (탭 전환/포인터 이동 중 stale dismiss가 끼어드는 경로 차단)
       _PendingExternalOutsideClickDismiss = true;
+      TraceAutoHide("OnForwardedMouseDown", "pending external outside-dismiss");
     }
 
     private void OnForwardedMouseUp(object? sender, MouseEventArgs e)
@@ -1604,6 +1610,7 @@ namespace VsLikeDoking.UI.Host
       if (_PendingExternalOutsideClickDismiss)
       {
         _PendingExternalOutsideClickDismiss = false;
+        TraceAutoHide("OnForwardedMouseUp", "consume pending external outside-dismiss");
         HandleDismissAutoHidePopup();
       }
 
@@ -2483,7 +2490,10 @@ namespace VsLikeDoking.UI.Host
         if (_Manager is not null && _Manager.IsAutoHidePopupVisible)
         {
           if (!IsPointWithinAutoHideInteractionArea(e.Location))
+          {
+            TraceAutoHide("OnSurfaceMouseUp", $"outside-click dismiss at {e.Location}");
             HandleDismissAutoHidePopup();
+          }
         }
 
         return;
@@ -2665,13 +2675,13 @@ namespace VsLikeDoking.UI.Host
     {
       if (_Manager is null) return;
       if (_AutoHideActivating) return;
-      if (DateTime.UtcNow < _SuppressAutoHideActivateUntilUtc) return;
+      if (DateTime.UtcNow < _SuppressAutoHideActivateUntilUtc)
+      {
+        TraceAutoHide("HandleActivateAutoHideTab", "blocked by suppression window");
+        return;
+      }
 
-      // 새 활성화 시점에는 이전 클릭에서 남은 deferred dismiss를 폐기한다.
-      _PendingDismissAutoHideOnMouseUp = false;
-      _PendingDismissStartedFromAutoHideInteraction = false;
-      _PendingExternalOutsideClickDismiss = false;
-      _ConsumeFirstDismissAfterAutoHideActivate = true;
+      TraceAutoHide("HandleActivateAutoHideTab", $"strip={stripIndex}, tab={tabIndex}");
 
       // 새 활성화 시점에는 이전 클릭에서 남은 deferred dismiss를 폐기한다.
       _PendingDismissAutoHideOnMouseUp = false;
@@ -2704,6 +2714,7 @@ namespace VsLikeDoking.UI.Host
       {
         // "Show" 우선(토글은 상태 불일치 시 반대로 동작 가능)
         var shown = _Manager.ShowAutoHidePopup( key, "UI:AutoHideTab" );
+        TraceAutoHide("HandleActivateAutoHideTab.ShowResult", $"key={key}, shown={shown}");
 
         // ShowAutoHidePopup 내부에서 ActiveContent까지 맞추므로 여기서 다시 SetActiveContent를 호출하면
         // 동일 키 재진입으로 토글-off가 발생할 수 있다.
@@ -2721,36 +2732,51 @@ namespace VsLikeDoking.UI.Host
       if (_Manager is null) return;
       if (_AutoHideActivating) return;
 
+      TraceAutoHide("HandleDismissAutoHidePopup", "enter");
+
       if (ShouldDeferDismissAutoHideByPointerState())
       {
         _PendingDismissStartedFromAutoHideInteraction = IsDismissSuppressedByAutoHideInteraction();
         _PendingDismissAutoHideOnMouseUp = true;
+        TraceAutoHide("HandleDismissAutoHidePopup", "deferred by pointer state");
         return;
       }
 
       if (_Manager.IsAutoHidePopupVisible && DateTime.UtcNow < _AutoHideActivationHoldUntilUtc)
+      {
+        TraceAutoHide("HandleDismissAutoHidePopup", "blocked by activation hold");
         return;
+      }
 
       // 탭 전환 직후 stale dismiss 1회를 흡수해 깜빡임/무한 여닫기 레이스를 줄인다.
       if (_ConsumeFirstDismissAfterAutoHideActivate)
       {
         if (IsDismissSuppressedByAutoHideInteraction())
+        {
+          TraceAutoHide("HandleDismissAutoHidePopup", "consume-first wait (still interacting)");
           return;
+        }
 
         _ConsumeFirstDismissAfterAutoHideActivate = false;
+        TraceAutoHide("HandleDismissAutoHidePopup", "consume-first dismiss swallowed");
         return;
       }
 
       if (!_Manager.IsAutoHidePopupVisible)
       {
+        TraceAutoHide("HandleDismissAutoHidePopup", "popup already hidden");
         HideAutoHidePopupHost(removeView: false);
         return;
       }
 
       if (IsDismissSuppressedByAutoHideInteraction())
+      {
+        TraceAutoHide("HandleDismissAutoHidePopup", "suppressed by auto-hide interaction");
         return;
+      }
 
       _Manager.HideAutoHidePopup("UI:AutoHideDismiss");
+      TraceAutoHide("HandleDismissAutoHidePopup", "manager hide requested");
 
       _ConsumeFirstDismissAfterAutoHideActivate = false;
 
@@ -2789,7 +2815,10 @@ namespace VsLikeDoking.UI.Host
       }
 
       if (Control.MouseButtons.HasFlag(MouseButtons.Left) || _InputRouter.IsLeftButtonDown)
+      {
+        TraceAutoHide("TryFlushPendingAutoHideDismiss", "waiting left button up");
         return;
+      }
 
       // defer가 AutoHide 상호작용 중에 시작된 경우 release에서 mouse 위치와 무관하게 폐기한다.
       // (탭 전환 도중 내려온 stale dismiss가 새 팝업을 닫는 진동 방지)
@@ -2797,6 +2826,7 @@ namespace VsLikeDoking.UI.Host
       {
         _PendingDismissAutoHideOnMouseUp = false;
         _PendingDismissStartedFromAutoHideInteraction = false;
+        TraceAutoHide("TryFlushPendingAutoHideDismiss", "drop stale pending from interaction-start");
         return;
       }
 
@@ -2805,13 +2835,31 @@ namespace VsLikeDoking.UI.Host
       {
         _PendingDismissAutoHideOnMouseUp = false;
         _PendingDismissStartedFromAutoHideInteraction = false;
+        TraceAutoHide("TryFlushPendingAutoHideDismiss", "drop pending (still interacting)");
         return;
       }
 
       _PendingDismissAutoHideOnMouseUp = false;
       _PendingDismissStartedFromAutoHideInteraction = false;
+      TraceAutoHide("TryFlushPendingAutoHideDismiss", "flush pending -> dismiss");
 
       HandleDismissAutoHidePopup();
+    }
+
+    private void TraceAutoHide(string stage, string detail)
+    {
+      if (!AutoHideTraceEnabled) return;
+
+      string active = "(null)";
+      var visible = false;
+
+      if (_Manager is not null)
+      {
+        active = _Manager.ActiveAutoHideKey ?? "(null)";
+        visible = _Manager.IsAutoHidePopupVisible;
+      }
+
+      Debug.WriteLine($"[AH][Surface][{DateTime.Now:HH:mm:ss.fff}] {stage} | {detail} | visible={visible}, active={active}, pend={_PendingDismissAutoHideOnMouseUp}, pendExt={_PendingExternalOutsideClickDismiss}, consume1={_ConsumeFirstDismissAfterAutoHideActivate}");
     }
 
 
