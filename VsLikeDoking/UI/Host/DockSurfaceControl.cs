@@ -827,26 +827,26 @@ namespace VsLikeDoking.UI.Host
 
     private void RequestPostPresentAutoHideRepair()
     {
-      if (IsDisposed) return;
-      if (_PostPresentRepairQueued) return;
+      if (_PostPresentRepairQueued)
+        return;
 
       _PostPresentRepairQueued = true;
+      TraceAutoHide("RequestPostPresentAutoHideRepair", "queued");
 
       TryBeginInvoke(() =>
       {
         _PostPresentRepairQueued = false;
 
-        if (IsDisposed) return;
+        // Ensure again in next message loop iteration.
+        var repaired = EnsureAutoHidePopupViewAttachedByManagerState();
 
-        // Presenter가 z-order/parent를 뒤늦게 바꿔도 한 번 더 복구
-        try
+        if (repaired)
         {
           if (_AutoHidePopupChrome is not null && !_AutoHidePopupChrome.IsDisposed && _AutoHidePopupChrome.Visible)
             _AutoHidePopupChrome.BringToFront();
         }
-        catch { }
 
-        var repaired = EnsureAutoHidePopupViewAttachedByManagerState();
+        repaired = EnsureAutoHidePopupViewAttachedByManagerState();
 
         try
         {
@@ -1668,34 +1668,34 @@ namespace VsLikeDoking.UI.Host
       var pressed = _InputRouter.Pressed;
 
       var popupKey = _Manager?.ActiveAutoHideKey;
-      if (!string.IsNullOrWhiteSpace( popupKey )) popupKey = popupKey!.Trim( );
+      if (!string.IsNullOrWhiteSpace(popupKey)) popupKey = popupKey!.Trim();
 
-      for (int si = 0 ; si < strips.Count ; si++)
+      for (int si = 0; si < strips.Count; si++)
       {
-        var sv = strips [ si ];
+        var sv = strips[si];
         if (sv.Bounds.IsEmpty) continue;
 
-        var dir = MapAutoHideEdgeToTextDirection( sv.Edge );
+        var dir = MapAutoHideEdgeToTextDirection(sv.Edge);
 
         var start = sv.TabStart;
         var end = sv.TabStart + sv.TabCount;
 
-        _Renderer.DrawAutoHideStripBackground( g, sv.Bounds );
+        _Renderer.DrawAutoHideStripBackground(g, sv.Bounds);
 
-        for (int ti = start ; ti < end ; ti++)
+        for (int ti = start; ti < end; ti++)
         {
-          if ((uint) ti >= (uint) _Tree.AutoHideTabs.Count) break;
+          if ((uint)ti >= (uint)_Tree.AutoHideTabs.Count) break;
 
-          var tv = _Tree.AutoHideTabs [ ti ];
+          var tv = _Tree.AutoHideTabs[ti];
 
-          var key = GetAutoHideTabPersistKeySafe( tv.ContentKey, tv );
-          var text = string.IsNullOrWhiteSpace( key ) ? string.Empty : GetTitleOrKey( key );
+          var key = GetAutoHideTabPersistKeySafe(tv.ContentKey, tv);
+          var text = string.IsNullOrWhiteSpace(key) ? string.Empty : GetTitleOrKey(key);
 
           var isActive = tv.IsActive;
 
           // Manager가 표시 중인 AutoHide 키를 우선 반영(레이아웃 트리 동기화가 늦는 프레임 방지)
-          if (!string.IsNullOrWhiteSpace( popupKey ) && !string.IsNullOrWhiteSpace( key ))
-            isActive |= string.Equals( popupKey, key, StringComparison.Ordinal );
+          if (!string.IsNullOrWhiteSpace(popupKey) && !string.IsNullOrWhiteSpace(key))
+            isActive |= string.Equals(popupKey, key, StringComparison.Ordinal);
 
           var isHoverHot =
             hover.Kind == DockVisualTree.RegionKind.AutoHideTab
@@ -1710,7 +1710,7 @@ namespace VsLikeDoking.UI.Host
           if (isActive) state = DockRenderer.TabVisualState.Active;
           else if (isHoverHot || isPressedHot) state = DockRenderer.TabVisualState.Hot;
 
-          _Renderer.DrawAutoHideTab( g, tv.Bounds, text, state, dir );
+          _Renderer.DrawAutoHideTab(g, tv.Bounds, text, state, dir);
         }
       }
     }
@@ -1930,16 +1930,28 @@ namespace VsLikeDoking.UI.Host
       _PendingExternalOutsideClickDismiss = false;
       _ConsumeFirstDismissAfterAutoHideActivate = true;
 
-      if (!TryResolveAutoHideTabIndices( stripIndex, tabIndex, out _, out var globalIndex ))
+      // 새 활성화 시점에는 이전 클릭에서 남은 deferred dismiss를 폐기한다.
+      _PendingDismissAutoHideOnMouseUp = false;
+      _PendingDismissStartedFromAutoHideInteraction = false;
+      _PendingExternalOutsideClickDismiss = false;
+      _ConsumeFirstDismissAfterAutoHideActivate = true;
+
+      // 새 활성화 시점에는 이전 클릭에서 남은 deferred dismiss를 폐기한다.
+      _PendingDismissAutoHideOnMouseUp = false;
+      _PendingDismissStartedFromAutoHideInteraction = false;
+      _PendingExternalOutsideClickDismiss = false;
+      _ConsumeFirstDismissAfterAutoHideActivate = true;
+
+      if (!TryResolveAutoHideTabIndices(stripIndex, tabIndex, out _, out var globalIndex))
         return;
 
-      if ((uint) globalIndex >= (uint) _Tree.AutoHideTabs.Count) return;
+      if ((uint)globalIndex >= (uint)_Tree.AutoHideTabs.Count) return;
 
-      var tv = _Tree.AutoHideTabs [ globalIndex ];
-      var key = GetAutoHideTabPersistKeySafe( tv.ContentKey, tv );
-      if (string.IsNullOrWhiteSpace( key )) return;
+      var tv = _Tree.AutoHideTabs[globalIndex];
+      var key = GetAutoHideTabPersistKeySafe(tv.ContentKey, tv);
+      if (string.IsNullOrWhiteSpace(key)) return;
 
-      key = key.Trim( );
+      key = key.Trim();
       if (key.Length == 0) return;
 
       if (_Manager.IsAutoHidePopupVisible
@@ -1959,8 +1971,8 @@ namespace VsLikeDoking.UI.Host
 
         // ShowAutoHidePopup 내부에서 ActiveContent까지 맞추므로 여기서 다시 SetActiveContent를 호출하면
         // 동일 키 재진입으로 토글-off가 발생할 수 있다.
-        if (shown) MarkVisualDirtyAndRender( );
-        else RequestRender( );
+        if (shown) MarkVisualDirtyAndRender();
+        else RequestRender();
       }
       finally
       {
@@ -2311,7 +2323,7 @@ namespace VsLikeDoking.UI.Host
       return string.Empty;
     }
 
-    private bool TryResolveAutoHideTabIndices ( int stripIndex, int tabIndex, out int resolvedStripIndex, out int globalTabIndex )
+    private bool TryResolveAutoHideTabIndices(int stripIndex, int tabIndex, out int resolvedStripIndex, out int globalTabIndex)
     {
       resolvedStripIndex = -1;
       globalTabIndex = -1;
@@ -2319,9 +2331,9 @@ namespace VsLikeDoking.UI.Host
       if (tabIndex < 0) return false;
 
       // stripIndex가 정상인 경우: local/global 둘 다 허용
-      if ((uint) stripIndex < (uint) _Tree.AutoHideStrips.Count)
+      if ((uint)stripIndex < (uint)_Tree.AutoHideStrips.Count)
       {
-        var strip = _Tree.AutoHideStrips [ stripIndex ];
+        var strip = _Tree.AutoHideStrips[stripIndex];
         resolvedStripIndex = stripIndex;
 
         // Accept both "strip-local" and "global" tabIndex.
@@ -2329,15 +2341,15 @@ namespace VsLikeDoking.UI.Host
         else if (tabIndex >= strip.TabStart && tabIndex < strip.TabStart + strip.TabCount) globalTabIndex = tabIndex;
         else return false;
 
-        return (uint) globalTabIndex < (uint) _Tree.AutoHideTabs.Count;
+        return (uint)globalTabIndex < (uint)_Tree.AutoHideTabs.Count;
       }
 
       // stripIndex가 유실된 케이스: tabIndex를 global로 보고 스트립을 역추적
-      if ((uint) tabIndex >= (uint) _Tree.AutoHideTabs.Count) return false;
+      if ((uint)tabIndex >= (uint)_Tree.AutoHideTabs.Count) return false;
 
-      for (int si = 0 ; si < _Tree.AutoHideStrips.Count ; si++)
+      for (int si = 0; si < _Tree.AutoHideStrips.Count; si++)
       {
-        var s = _Tree.AutoHideStrips [ si ];
+        var s = _Tree.AutoHideStrips[si];
         var start = s.TabStart;
         var end = start + s.TabCount;
 

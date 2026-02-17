@@ -974,15 +974,15 @@ namespace VsLikeDoking.Core
       foreach (var n in root.TraverseDepthFirst(true))
       {
         if (n is DockGroupNode g) for (int i = 0; i < g.Items.Count; i++)
-          {
-            int idx = i;
-            yield return new LayoutItemRef(g.Items[idx].PersistKey, () => g.Items[idx].State, v => g.Items[idx].State = v);
-          }
+        {
+          int idx = i;
+          yield return new LayoutItemRef(g.Items[idx].PersistKey, () => g.Items[idx].State, v => g.Items[idx].State = v);
+        }
         else if (n is DockAutoHideNode a) for (int i = 0; i < a.Items.Count; i++)
-          {
-            int idx = i;
-            yield return new LayoutItemRef(a.Items[idx].PersistKey, () => a.Items[idx].State, v => a.Items[idx].State = v);
-          }
+        {
+          int idx = i;
+          yield return new LayoutItemRef(a.Items[idx].PersistKey, () => a.Items[idx].State, v => a.Items[idx].State = v);
+        }
       }
     }
 
