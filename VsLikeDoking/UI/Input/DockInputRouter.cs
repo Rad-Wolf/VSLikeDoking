@@ -112,7 +112,6 @@ namespace VsLikeDoking.UI.Input
       surface.MouseUp += OnMouseUp;
       surface.MouseLeave += OnMouseLeave;
       surface.MouseCaptureChanged += OnMouseCaptureChanged;
-      surface.LostFocus += OnLostFocus;
       surface.KeyDown += OnKeyDown;
     }
 
@@ -128,7 +127,6 @@ namespace VsLikeDoking.UI.Input
       s.MouseUp -= OnMouseUp;
       s.MouseLeave -= OnMouseLeave;
       s.MouseCaptureChanged -= OnMouseCaptureChanged;
-      s.LostFocus -= OnLostFocus;
       s.KeyDown -= OnKeyDown;
 
       _Surface = null;
@@ -430,6 +428,9 @@ namespace VsLikeDoking.UI.Input
       if (a.SecondaryIndex != b.SecondaryIndex) return false;
       return true;
     }
+
+    private static bool IsAutoHideChrome(DockVisualTree.RegionKind kind)
+      => kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip;
 
     private void ResetPointerStates()
     {
