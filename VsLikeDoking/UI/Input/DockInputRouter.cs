@@ -325,7 +325,7 @@ namespace VsLikeDoking.UI.Input
         _LeftDown = false;
 
         _SuppressClick = false;
-
+  
         SetPressed(DockHitTestResult.None());
         UpdateHover(e.Location);
         return;

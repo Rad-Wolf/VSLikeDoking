@@ -182,10 +182,7 @@ namespace VsLikeDoking.UI.Content
 
         // AutoHide 팝업으로 활성화된 키는 Surface 직속 배치 대상이 아니다.
         // (DockSurfaceControl의 PopupHost가 소유)
-        if (_Manager.IsAutoHidePopupVisible
-          && !string.IsNullOrWhiteSpace(_Manager.ActiveAutoHideKey)
-          && string.Equals(_Manager.ActiveAutoHideKey, key, StringComparison.Ordinal))
-          continue;
+        if (IsActiveAutoHidePopupKey(key)) continue;
 
         // Ensure는 "없을 때만" (매 프레임 팩토리 호출 방지)
         var content = _Manager.Registry.Get(key) ?? _Manager.Registry.Ensure(key);
@@ -252,6 +249,15 @@ namespace VsLikeDoking.UI.Content
       }
     }
 
+
+    private bool IsActiveAutoHidePopupKey(string key)
+    {
+      if (_Manager is null) return false;
+      if (!_Manager.IsAutoHidePopupVisible) return false;
+      if (string.IsNullOrWhiteSpace(_Manager.ActiveAutoHideKey)) return false;
+
+      return string.Equals(_Manager.ActiveAutoHideKey, key, StringComparison.Ordinal);
+    }
     private static void LayoutView(Control view, Rectangle bounds)
     {
       // 빈번 호출: 불필요한 SetBounds/Visible 토글 최소화
@@ -283,10 +289,14 @@ namespace VsLikeDoking.UI.Content
 
         // 현재 활성 AutoHide 팝업 키는 Surface 직계 자식으로 유지될 수 있으므로
         // Presenter의 비가시 정리에서 숨기지 않는다.
-        if (_Manager is not null
-          && _Manager.IsAutoHidePopupVisible
-          && !string.IsNullOrWhiteSpace(_Manager.ActiveAutoHideKey)
-          && string.Equals(_Manager.ActiveAutoHideKey, key, StringComparison.Ordinal))
+        if (IsActiveAutoHidePopupKey(key))
+        {
+          if (view is not null && !view.IsDisposed && ReferenceEquals(view.Parent, _Surface) && !view.Visible)
+            view.Visible = true;
+          continue;
+        }
+
+        if (view is null || view.IsDisposed)
         {
           if (view is not null && !view.IsDisposed && ReferenceEquals(view.Parent, _Surface) && !view.Visible)
             view.Visible = true;
