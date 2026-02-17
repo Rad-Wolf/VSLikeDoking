@@ -180,17 +180,11 @@ namespace VsLikeDoking.UI.Content
         key = key.Trim();
         if (key.Length == 0) continue;
 
-        // 핵심 FIX:
-        // AutoHide(핀) 키는 어떤 경우에도 Surface 직속 배치 대상이 아니다.
-        // (PopupHost 소유권과 Presenter 재부모화가 충돌하면 무한 루프가 걸린다)
-        if (_AutoHideKeys.Contains(key))
-          continue;
-
-        // AutoHide 팝업으로 활성화된 키도 Surface 직속 배치 대상이 아니다.
-        // (안전망: AutoHideTabs 누락 상황 방어)
-        if (_Manager.IsAutoHidePopupVisible &&
-            !string.IsNullOrWhiteSpace(_Manager.ActiveAutoHideKey) &&
-            string.Equals(_Manager.ActiveAutoHideKey, key, StringComparison.Ordinal))
+        // AutoHide 팝업으로 활성화된 키는 Surface 직속 배치 대상이 아니다.
+        // (DockSurfaceControl의 PopupHost가 소유)
+        if (_Manager.IsAutoHidePopupVisible
+          && !string.IsNullOrWhiteSpace(_Manager.ActiveAutoHideKey)
+          && string.Equals(_Manager.ActiveAutoHideKey, key, StringComparison.Ordinal))
           continue;
 
         // Ensure는 "없을 때만" (매 프레임 팩토리 호출 방지)

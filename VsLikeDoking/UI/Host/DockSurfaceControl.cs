@@ -76,41 +76,32 @@ namespace VsLikeDoking.UI.Host
     private const bool AutoHideTraceEnabled = true;
     private static readonly string AutoHideTraceFilePath = Path.Combine(Path.GetTempPath(), "VsLikeDoking-autohide-trace.log");
 
-    // AutoHide Popup Host ========================================================================
+    // AutoHide Popup Layer =======================================================================
 
-    private Panel? _AutoHidePopupHost;
+    // (NOTE) AutoHide 팝업 "뷰"는 Presenter가 뺏어가면 루프가 나므로 Surface 직계 자식으로 유지한다.
+    //        테두리/배경(Chrome)과 리사이즈 그립만 별도 컨트롤로 올린다.
+
+    private AutoHidePopupChromePanel? _AutoHidePopupChrome;
+    private Panel? _AutoHideResizeGrip;
+
+    private Control? _AutoHidePopupView;
     private string? _AutoHidePopupKey;
 
-    // (PATCH) 팝업 View가 Presenter/다른 컨테이너에 의해 "뺏기는" 상황 방지용 캐시
-    private Control? _AutoHidePopupView;
+    private Rectangle _AutoHidePopupOuterBounds;
+    private Rectangle _AutoHidePopupInnerBounds;
 
-    // (PATCH) PersistKey별 AutoHide 팝업 크기 캐시(UI 레벨에서만 유지)
-    private readonly Dictionary<string, Size> _AutoHidePopupSizeCache = new(StringComparer.Ordinal);
-
-    // (PATCH) AutoHide 팝업 리사이즈 그립(팝업이 열렸을 때만 표시)
-    private Panel? _AutoHideResizeGrip;
     private bool _AutoHideResizeDragging;
     private Point _AutoHideResizeDownScreen;
     private Size _AutoHideResizeStartSize;
     private DockAutoHideSide _AutoHideResizeSide;
     private string? _AutoHideResizeKey;
 
-    private IDockContent? TryGetOrEnsureContent(string key)
-    {
-      if (_Manager is null) return null;
+    // (UI Cache) PersistKey별 AutoHide 팝업 크기 캐시(UI 레벨에서만 유지)
+    private readonly Dictionary<string, Size> _AutoHidePopupSizeCache = new(StringComparer.Ordinal);
 
-      IDockContent? content = null;
-
-      try { content = _Manager.Registry.Get(key); }
-      catch { content = null; }
-
-      if (content is not null) return content;
-
-      try { content = _Manager.Registry.Ensure(key); }
-      catch { content = null; }
-
-      return content;
-    }
+    // (Guard) 뷰 소유권 충돌로 인한 무한 루프 방지(짧은 시간 내 재부착 폭주 감지)
+    private long _AutoHideRepairBurstStartMs;
+    private int _AutoHideRepairBurstCount;
 
     // Host Form deactivate hook (AutoHide 강제 닫기) ================================================
     private Form? _HookedHostForm;
@@ -150,7 +141,7 @@ namespace VsLikeDoking.UI.Host
           _Root = null;
 
           // 매니저가 사라지면 AutoHide 팝업도 즉시 정리
-          HideAutoHidePopupHost(removeView: true);
+          HideAutoHidePopupLayer(removeView: true);
         }
 
         MarkVisualDirtyAndRender();
@@ -254,7 +245,7 @@ namespace VsLikeDoking.UI.Host
       _ConsumeFirstDismissAfterAutoHideActivate = false;
       _SuppressAutoHideActivateUntilUtc = DateTime.MinValue;
 
-      _AutoHidePopupHost = null;
+      _AutoHidePopupChrome = null;
       _AutoHidePopupKey = null;
       _AutoHidePopupView = null;
 
@@ -333,8 +324,6 @@ namespace VsLikeDoking.UI.Host
 
       EnsureVisuals(bounds);
 
-      // (PATCH) “안 보이는데 클릭만 먹는” 케이스 방지: 매 프레임이라도 팝업 View 소유권 보정
-      EnsureAutoHidePopupViewAttachedByManagerState();
 
       if (_Renderer is null) return;
 
@@ -376,7 +365,7 @@ namespace VsLikeDoking.UI.Host
       _SuppressAutoHideActivateUntilUtc = DateTime.MinValue;
 
       _Manager.HideAutoHidePopup("UI:HostDeactivate");
-      HideAutoHidePopupHost(removeView: false);
+      HideAutoHidePopupLayer(removeView: false);
       RequestRender();
     }
 
@@ -385,7 +374,13 @@ namespace VsLikeDoking.UI.Host
       try { ClearOverlayPreview(); } catch { }
       try { DestroyOverlay(); } catch { }
 
-      try { HideAutoHidePopupHost(removeView: true); } catch { }
+      try { HideAutoHidePopupLayer(removeView: true); } catch { }
+
+      if (_HookedHostForm is not null && !_HookedHostForm.IsDisposed)
+      {
+        try { _HookedHostForm.Deactivate -= OnHostFormDeactivate; } catch { }
+      }
+      _HookedHostForm = null;
 
       if (_HookedHostForm is not null && !_HookedHostForm.IsDisposed)
       {
@@ -420,7 +415,7 @@ namespace VsLikeDoking.UI.Host
         UpdateOverlayPreview(_TabDropPreview);
 
       // AutoHide 팝업도 위치 보정
-      UpdateAutoHidePopupHostLayout(ClientRectangle);
+      UpdateAutoHidePopupLayerLayout(ClientRectangle);
     }
 
     protected override void OnSizeChanged(EventArgs e)
@@ -432,7 +427,7 @@ namespace VsLikeDoking.UI.Host
         UpdateOverlayPreview(_TabDropPreview);
 
       // AutoHide 팝업도 위치 보정
-      UpdateAutoHidePopupHostLayout(ClientRectangle);
+      UpdateAutoHidePopupLayerLayout(ClientRectangle);
     }
 
     protected override void Dispose(bool disposing)
@@ -465,7 +460,7 @@ namespace VsLikeDoking.UI.Host
         try { _Presenter.Dispose(); }
         catch { }
 
-        try { DestroyAutoHidePopupHost(); } catch { }
+        try { DestroyAutoHidePopupLayer(); } catch { }
 
         _Manager = null;
         _Renderer = null;
@@ -504,7 +499,7 @@ namespace VsLikeDoking.UI.Host
         else _Presenter.Clear(true);
 
         // AutoHide 팝업(슬라이드) 컨텐츠를 Surface 위에 올린다.
-        PresentAutoHidePopupHost(bounds);
+        PresentAutoHidePopupLayer(bounds);
 
         // (PATCH) Presenter가 뷰를 만진 뒤에도 팝업 View가 남아있도록 보정
         EnsureAutoHidePopupViewAttachedByManagerState();
@@ -635,7 +630,7 @@ namespace VsLikeDoking.UI.Host
       return false;
     }
 
-    // AutoHide Popup Host =========================================================================
+    // AutoHide Popup Layer =========================================================================
 
     private static string? NormalizeAutoHideKey(string? key)
     {
@@ -659,30 +654,32 @@ namespace VsLikeDoking.UI.Host
       return DockAutoHideSide.Left;
     }
 
-    private void EnsureAutoHidePopupHost()
+    private IDockContent? TryGetOrEnsureContent(string key)
     {
-      if (_AutoHidePopupHost is null || _AutoHidePopupHost.IsDisposed)
+      if (_Manager is null) return null;
+      try { return _Manager.Registry.Get(key) ?? _Manager.Registry.Ensure(key); }
+      catch { return null; }
+    }
+
+    private void EnsureAutoHidePopupChrome()
+    {
+      if (_AutoHidePopupChrome is null || _AutoHidePopupChrome.IsDisposed)
       {
-        _AutoHidePopupHost = new Panel
+        _AutoHidePopupChrome = new AutoHidePopupChromePanel
         {
           Visible = false,
           TabStop = false,
-          BackColor = Color.Transparent,
-          Padding = new Padding(AutoHidePopupContentPadding),
         };
       }
 
-      // Presenter가 Controls를 재배치/정리하는 경우를 대비해 항상 Parent를 보장한다.
-      if (!ReferenceEquals(_AutoHidePopupHost.Parent, this))
-        Controls.Add(_AutoHidePopupHost);
+      if (!ReferenceEquals(_AutoHidePopupChrome.Parent, this))
+        Controls.Add(_AutoHidePopupChrome);
 
-      EnsureAutoHideResizeGrip();
+      UpdateAutoHideChromeTheme();
     }
 
     private void EnsureAutoHideResizeGrip()
     {
-      if (_AutoHidePopupHost is null) return;
-
       if (_AutoHideResizeGrip is null || _AutoHideResizeGrip.IsDisposed)
       {
         _AutoHideResizeGrip = new Panel
@@ -698,152 +695,148 @@ namespace VsLikeDoking.UI.Host
         _AutoHideResizeGrip.MouseCaptureChanged += OnAutoHideResizeGripCaptureChanged;
       }
 
-      if (!ReferenceEquals(_AutoHideResizeGrip.Parent, _AutoHidePopupHost))
-        _AutoHidePopupHost.Controls.Add(_AutoHideResizeGrip);
+      if (!ReferenceEquals(_AutoHideResizeGrip.Parent, this))
+        Controls.Add(_AutoHideResizeGrip);
     }
 
-    private void DestroyAutoHidePopupHost()
+    private void DestroyAutoHidePopupLayer()
     {
-      if (_AutoHidePopupHost is null) return;
+      CancelAutoHideResizeDrag();
 
-      try { _AutoHidePopupHost.Controls.Clear(); } catch { }
-
-      try
+      if (_AutoHideResizeGrip is not null)
       {
-        if (!_AutoHidePopupHost.IsDisposed)
-          _AutoHidePopupHost.Dispose();
+        try
+        {
+          _AutoHideResizeGrip.MouseDown -= OnAutoHideResizeGripMouseDown;
+          _AutoHideResizeGrip.MouseMove -= OnAutoHideResizeGripMouseMove;
+          _AutoHideResizeGrip.MouseUp -= OnAutoHideResizeGripMouseUp;
+          _AutoHideResizeGrip.MouseCaptureChanged -= OnAutoHideResizeGripCaptureChanged;
+        }
+        catch { }
+
+        try { if (!_AutoHideResizeGrip.IsDisposed) _AutoHideResizeGrip.Dispose(); } catch { }
       }
-      catch { }
 
-      _AutoHidePopupHost = null;
-      _AutoHidePopupKey = null;
-      _AutoHidePopupView = null;
+      if (_AutoHidePopupChrome is not null)
+      {
+        try { _AutoHidePopupChrome.Theme = null; } catch { }
+        try { if (!_AutoHidePopupChrome.IsDisposed) _AutoHidePopupChrome.Dispose(); } catch { }
+      }
 
+      // 뷰는 Registry 소유이므로 Dispose 금지. Parent만 정리.
+      if (_AutoHidePopupView is not null && !_AutoHidePopupView.IsDisposed)
+      {
+        try
+        {
+          if (ReferenceEquals(_AutoHidePopupView.Parent, this))
+            Controls.Remove(_AutoHidePopupView);
+        }
+        catch { }
+      }
+
+      _AutoHidePopupChrome = null;
       _AutoHideResizeGrip = null;
+
+      _AutoHidePopupView = null;
+      _AutoHidePopupKey = null;
+
+      _AutoHidePopupOuterBounds = Rectangle.Empty;
+      _AutoHidePopupInnerBounds = Rectangle.Empty;
+
       _AutoHideResizeDragging = false;
       _AutoHideResizeKey = null;
     }
 
-    private void PresentAutoHidePopupHost(Rectangle bounds)
+    private void PresentAutoHidePopupLayer(Rectangle bounds)
     {
-      TraceAutoHide("PresentAutoHidePopupHost", "enter");
+      TraceAutoHide("PresentAutoHidePopupLayer", "enter");
 
       if (_Manager is null || _Root is null)
       {
-        TraceAutoHide("PresentAutoHidePopupHost", "manager/root null -> hide host");
-        HideAutoHidePopupHost(removeView: true);
+        HideAutoHidePopupLayer(removeView: true);
         return;
       }
 
       if (!_Manager.IsAutoHidePopupVisible)
       {
         _ConsumeFirstDismissAfterAutoHideActivate = false;
-        TraceAutoHide("PresentAutoHidePopupHost", "manager says popup hidden -> hide host");
-        HideAutoHidePopupHost(removeView: false);
+        HideAutoHidePopupLayer(removeView: false);
         return;
       }
 
       var key = NormalizeAutoHideKey(_Manager.ActiveAutoHideKey);
       if (key is null)
       {
-        TraceAutoHide("PresentAutoHidePopupHost", "active key null -> hide host");
-        HideAutoHidePopupHost(removeView: false);
+        HideAutoHidePopupLayer(removeView: false);
         return;
       }
 
       DockAutoHideSide side;
       Size? popupSize;
 
-      // (PATCH) VisualTree 메타 실패해도 "캐시 side + 기본 size"로 무조건 띄운다
+      // VisualTree 메타 실패해도 캐시 side + 기본 size로 계속 띄운다.
       if (!TryFindAutoHidePopupInfoByVisualTree(key, out side, out popupSize))
       {
         side = GetCachedAutoHideSideOrDefault(key);
         popupSize = null;
       }
 
-      //var content = _Manager.Registry.Ensure(key);
+      // UI 캐시 우선
+      if (_AutoHidePopupSizeCache.TryGetValue(key, out var cached))
+        popupSize = cached;
+
       var content = TryGetOrEnsureContent(key);
       if (content is null)
       {
-        TraceAutoHide("PresentAutoHidePopupHost", $"content not found for key={key}");
-        HideAutoHidePopupHost(removeView: true);
+        HideAutoHidePopupLayer(removeView: true);
         return;
       }
 
       var view = content.View;
       if (view is null || view.IsDisposed)
       {
-        TraceAutoHide("PresentAutoHidePopupHost", $"view missing/disposed for key={key}");
-        HideAutoHidePopupHost(removeView: true);
+        HideAutoHidePopupLayer(removeView: true);
         return;
       }
 
-      EnsureAutoHidePopupHost();
-      if (_AutoHidePopupHost is null) return;
-
-      if (!string.Equals(_AutoHidePopupKey, key, StringComparison.Ordinal))
-      {
-        _AutoHidePopupKey = key;
-        try { _AutoHidePopupHost.Controls.Clear(); } catch { }
-        _AutoHidePopupView = null;
-      }
-
-      _AutoHidePopupView = view;
-      var attachedChanged = EnsureAutoHidePopupViewAttached(view);
-
-      UpdateAutoHidePopupHostLayoutCore(bounds, side, popupSize);
-
-      var hostWasVisible = _AutoHidePopupHost.Visible;
-
-      try
-      {
-        if (!_AutoHidePopupHost.Visible)
-          _AutoHidePopupHost.Visible = true;
-
-        if (!hostWasVisible || attachedChanged)
-        {
-          _AutoHidePopupHost.BringToFront();
-          view.BringToFront();
-        }
-
-        if (!view.Visible)
-          view.Visible = true;
-
-        if (!hostWasVisible || attachedChanged)
-          TraceAutoHide("PresentAutoHidePopupHost", $"host shown key={key}, attachedChanged={attachedChanged}");
-      }
-      catch { }
-    }
-
-    private void ClearAutoHidePopupContentOnly()
-    {
-      if (_AutoHidePopupHost is null) return;
-
-      try
-      {
-        for (int i = _AutoHidePopupHost.Controls.Count - 1; i >= 0; i--)
-        {
-          var c = _AutoHidePopupHost.Controls[i];
-          if (c is null) continue;
-          if (ReferenceEquals(c, _AutoHideResizeGrip)) continue;
-
-          _AutoHidePopupHost.Controls.RemoveAt(i);
-        }
-      }
-      catch { }
-
+      EnsureAutoHidePopupChrome();
       EnsureAutoHideResizeGrip();
+
+      _AutoHidePopupKey = key;
+      _AutoHidePopupView = view;
+
+      if (!EnsureAutoHidePopupViewAttachedToSurface(view))
+      {
+        // 폭주 감지로 popup 강제 종료된 케이스
+        return;
+      }
+
+      UpdateAutoHidePopupLayerLayoutCore(bounds, side, popupSize);
+
+      try
+      {
+        if (_AutoHidePopupChrome is not null)
+        {
+          _AutoHidePopupChrome.Visible = true;
+          _AutoHidePopupChrome.BringToFront();
+        }
+
+        view.Visible = true;
+        view.BringToFront();
+
+        if (_AutoHideResizeGrip is not null)
+        {
+          _AutoHideResizeGrip.Visible = true;
+          _AutoHideResizeGrip.BringToFront();
+        }
+      }
+      catch { }
     }
 
-    private void HideAutoHidePopupHost(bool removeView)
+    private void HideAutoHidePopupLayer(bool removeView)
     {
-      TraceAutoHide("HideAutoHidePopupHost", $"removeView={removeView}");
+      TraceAutoHide("HideAutoHidePopupLayer", $"removeView={removeView}");
 
-      if (_AutoHidePopupHost is null) { _AutoHidePopupKey = null; _AutoHidePopupView = null; return; }
-
-      try { _AutoHidePopupHost.Visible = false; } catch { }
-
-      // (PATCH) 리사이즈 드래그 중이면 강제 종료
       CancelAutoHideResizeDrag();
 
       if (_AutoHideResizeGrip is not null && !_AutoHideResizeGrip.IsDisposed)
@@ -851,20 +844,36 @@ namespace VsLikeDoking.UI.Host
         try { _AutoHideResizeGrip.Visible = false; } catch { }
       }
 
-      if (removeView)
+      if (_AutoHidePopupChrome is not null && !_AutoHidePopupChrome.IsDisposed)
       {
-        // (PATCH) 그립은 유지하고 컨텐츠만 제거
-        ClearAutoHidePopupContentOnly();
-
-        _AutoHidePopupKey = null;
-        _AutoHidePopupView = null;
-        _AutoHideResizeKey = null;
+        try { _AutoHidePopupChrome.Visible = false; } catch { }
       }
+
+      if (_AutoHidePopupView is not null && !_AutoHidePopupView.IsDisposed)
+      {
+        try { _AutoHidePopupView.Visible = false; } catch { }
+
+        if (removeView)
+        {
+          try
+          {
+            if (ReferenceEquals(_AutoHidePopupView.Parent, this))
+              Controls.Remove(_AutoHidePopupView);
+          }
+          catch { }
+
+          _AutoHidePopupView = null;
+          _AutoHidePopupKey = null;
+          _AutoHideResizeKey = null;
+        }
+      }
+
+      _AutoHidePopupOuterBounds = Rectangle.Empty;
+      _AutoHidePopupInnerBounds = Rectangle.Empty;
     }
 
-    private void UpdateAutoHidePopupHostLayout(Rectangle bounds)
+    private void UpdateAutoHidePopupLayerLayout(Rectangle bounds)
     {
-      if (_AutoHidePopupHost is null) return;
       if (_Manager is null || _Root is null) return;
       if (!_Manager.IsAutoHidePopupVisible) return;
 
@@ -880,65 +889,74 @@ namespace VsLikeDoking.UI.Host
         popupSize = null;
       }
 
-      UpdateAutoHidePopupHostLayoutCore(bounds, side, popupSize);
+      if (_AutoHidePopupSizeCache.TryGetValue(key, out var cached))
+        popupSize = cached;
+
+      UpdateAutoHidePopupLayerLayoutCore(bounds, side, popupSize);
     }
 
-    private void UpdateAutoHidePopupHostLayoutCore(Rectangle bounds, DockAutoHideSide side, Size? popupSize)
+    private void UpdateAutoHidePopupLayerLayoutCore(Rectangle bounds, DockAutoHideSide side, Size? popupSize)
     {
-      if (_AutoHidePopupHost is null) return;
-
+      if (_AutoHidePopupView is null || _AutoHidePopupView.IsDisposed) return;
       if (bounds.Width <= 0 || bounds.Height <= 0) return;
 
       var edge = MapAutoHideSideToEdge(side);
       var stripThickness = GetAutoHideStripThickness(edge);
 
-      var rc = ComputeAutoHidePopupRect(bounds, side, stripThickness, popupSize);
-      if (rc.Width <= 0 || rc.Height <= 0)
+      var rcOuter = ComputeAutoHidePopupRect(bounds, side, stripThickness, popupSize);
+      if (rcOuter.Width <= 0 || rcOuter.Height <= 0)
       {
-        HideAutoHidePopupHost(removeView: false);
+        HideAutoHidePopupLayer(removeView: false);
         return;
       }
 
+      _AutoHidePopupOuterBounds = rcOuter;
+      _AutoHidePopupInnerBounds = ComputeAutoHideInnerRect(rcOuter, side);
+
       try
       {
-        if (_AutoHidePopupHost.Bounds != rc)
-          _AutoHidePopupHost.Bounds = rc;
+        if (_AutoHidePopupChrome is not null && !_AutoHidePopupChrome.IsDisposed)
+        {
+          if (_AutoHidePopupChrome.Bounds != rcOuter)
+            _AutoHidePopupChrome.Bounds = rcOuter;
+        }
       }
       catch { }
 
-      UpdateAutoHidePopupHostPadding(side);
-
-      // (PATCH) Host 크기 바뀐 직후 View가 0 사이즈로 남는 것 방지
-      if (_AutoHidePopupView is not null && !_AutoHidePopupView.IsDisposed && ReferenceEquals(_AutoHidePopupView.Parent, _AutoHidePopupHost))
+      try
       {
-        try
-        {
-          var displayRect = _AutoHidePopupHost.DisplayRectangle;
-          if (_AutoHidePopupView.Bounds != displayRect)
-            _AutoHidePopupView.Bounds = displayRect;
-        }
-        catch { }
+        if (_AutoHidePopupView.Bounds != _AutoHidePopupInnerBounds)
+          _AutoHidePopupView.Bounds = _AutoHidePopupInnerBounds;
       }
+      catch { }
 
       UpdateAutoHideResizeGripLayout(side);
     }
 
+    private static Rectangle ComputeAutoHideInnerRect(Rectangle outer, DockAutoHideSide side)
+    {
+      var left = outer.X + AutoHidePopupContentPadding;
+      var top = outer.Y + AutoHidePopupContentPadding;
+      var right = outer.Right - AutoHidePopupContentPadding;
+      var bottom = outer.Bottom - AutoHidePopupContentPadding;
+
+      if (side == DockAutoHideSide.Left) right -= AutoHideResizeGripThickness;
+      else if (side == DockAutoHideSide.Right) left += AutoHideResizeGripThickness;
+      else if (side == DockAutoHideSide.Top) bottom -= AutoHideResizeGripThickness;
+      else top += AutoHideResizeGripThickness;
+
+      var w = Math.Max(0, right - left);
+      var h = Math.Max(0, bottom - top);
+
+      return new Rectangle(left, top, w, h);
+    }
+
     private void UpdateAutoHideResizeGripLayout(DockAutoHideSide side)
     {
-      if (_AutoHidePopupHost is null) return;
-
       EnsureAutoHideResizeGrip();
       if (_AutoHideResizeGrip is null || _AutoHideResizeGrip.IsDisposed) return;
 
-      // 팝업이 떠 있을 때만 보이게
-      if (!_AutoHidePopupHost.Visible)
-      {
-        try { _AutoHideResizeGrip.Visible = false; } catch { }
-        return;
-      }
-
-      var rc = _AutoHidePopupHost.ClientRectangle;
-      if (rc.Width <= 0 || rc.Height <= 0)
+      if (_AutoHidePopupOuterBounds.IsEmpty || (_AutoHidePopupView is null || _AutoHidePopupView.IsDisposed))
       {
         try { _AutoHideResizeGrip.Visible = false; } catch { }
         return;
@@ -948,28 +966,30 @@ namespace VsLikeDoking.UI.Host
 
       if (side == DockAutoHideSide.Left)
       {
-        gripRc = new Rectangle(Math.Max(0, rc.Width - AutoHideResizeGripThickness), 0, AutoHideResizeGripThickness, rc.Height);
+        gripRc = new Rectangle(_AutoHidePopupOuterBounds.Right - AutoHideResizeGripThickness, _AutoHidePopupOuterBounds.Y, AutoHideResizeGripThickness, _AutoHidePopupOuterBounds.Height);
         _AutoHideResizeGrip.Cursor = Cursors.SizeWE;
       }
       else if (side == DockAutoHideSide.Right)
       {
-        gripRc = new Rectangle(0, 0, AutoHideResizeGripThickness, rc.Height);
+        gripRc = new Rectangle(_AutoHidePopupOuterBounds.X, _AutoHidePopupOuterBounds.Y, AutoHideResizeGripThickness, _AutoHidePopupOuterBounds.Height);
         _AutoHideResizeGrip.Cursor = Cursors.SizeWE;
       }
       else if (side == DockAutoHideSide.Top)
       {
-        gripRc = new Rectangle(0, Math.Max(0, rc.Height - AutoHideResizeGripThickness), rc.Width, AutoHideResizeGripThickness);
+        gripRc = new Rectangle(_AutoHidePopupOuterBounds.X, _AutoHidePopupOuterBounds.Bottom - AutoHideResizeGripThickness, _AutoHidePopupOuterBounds.Width, AutoHideResizeGripThickness);
         _AutoHideResizeGrip.Cursor = Cursors.SizeNS;
       }
       else
       {
-        gripRc = new Rectangle(0, 0, rc.Width, AutoHideResizeGripThickness);
+        gripRc = new Rectangle(_AutoHidePopupOuterBounds.X, _AutoHidePopupOuterBounds.Y, _AutoHidePopupOuterBounds.Width, AutoHideResizeGripThickness);
         _AutoHideResizeGrip.Cursor = Cursors.SizeNS;
       }
 
       try
       {
-        _AutoHideResizeGrip.Bounds = gripRc;
+        if (_AutoHideResizeGrip.Bounds != gripRc)
+          _AutoHideResizeGrip.Bounds = gripRc;
+
         _AutoHideResizeGrip.Visible = true;
         _AutoHideResizeGrip.BringToFront();
       }
@@ -991,17 +1011,14 @@ namespace VsLikeDoking.UI.Host
     private void OnAutoHideResizeGripMouseDown(object? sender, MouseEventArgs e)
     {
       if (e.Button != MouseButtons.Left) return;
-      if (_AutoHidePopupHost is null || _AutoHidePopupHost.IsDisposed) return;
       if (_Manager is null) return;
       if (!_Manager.IsAutoHidePopupVisible) return;
 
-      var key = _Manager.ActiveAutoHideKey;
-      if (string.IsNullOrWhiteSpace(key)) return;
+      var key = NormalizeAutoHideKey(_Manager.ActiveAutoHideKey);
+      if (key is null) return;
 
-      key = key.Trim();
-      if (key.Length == 0) return;
-
-      if (!TryFindAutoHidePopupInfoByVisualTree(key, out var side, out var _)) return;
+      if (!TryFindAutoHidePopupInfoByVisualTree(key, out var side, out var _))
+        side = GetCachedAutoHideSideOrDefault(key);
 
       _AutoHideResizeKey = key;
       _AutoHideResizeSide = side;
@@ -1012,7 +1029,7 @@ namespace VsLikeDoking.UI.Host
 
       _AutoHideResizeDragging = true;
       _AutoHideResizeDownScreen = ptScreen;
-      _AutoHideResizeStartSize = _AutoHidePopupHost.Size;
+      _AutoHideResizeStartSize = _AutoHidePopupOuterBounds.IsEmpty ? Size.Empty : _AutoHidePopupOuterBounds.Size;
 
       if (_AutoHideResizeGrip is not null && !_AutoHideResizeGrip.IsDisposed)
       {
@@ -1023,7 +1040,6 @@ namespace VsLikeDoking.UI.Host
     private void OnAutoHideResizeGripMouseMove(object? sender, MouseEventArgs e)
     {
       if (!_AutoHideResizeDragging) return;
-      if (_AutoHidePopupHost is null || _AutoHidePopupHost.IsDisposed) { CancelAutoHideResizeDrag(); return; }
       if (_Manager is null || !_Manager.IsAutoHidePopupVisible) { CancelAutoHideResizeDrag(); return; }
 
       var key = _AutoHideResizeKey;
@@ -1041,21 +1057,10 @@ namespace VsLikeDoking.UI.Host
 
       switch (_AutoHideResizeSide)
       {
-        case DockAutoHideSide.Left:
-          reqW = _AutoHideResizeStartSize.Width + dx;
-          break;
-
-        case DockAutoHideSide.Right:
-          reqW = _AutoHideResizeStartSize.Width - dx;
-          break;
-
-        case DockAutoHideSide.Top:
-          reqH = _AutoHideResizeStartSize.Height + dy;
-          break;
-
-        default:
-          reqH = _AutoHideResizeStartSize.Height - dy;
-          break;
+        case DockAutoHideSide.Left: reqW = _AutoHideResizeStartSize.Width + dx; break;
+        case DockAutoHideSide.Right: reqW = _AutoHideResizeStartSize.Width - dx; break;
+        case DockAutoHideSide.Top: reqH = _AutoHideResizeStartSize.Height + dy; break;
+        default: reqH = _AutoHideResizeStartSize.Height - dy; break;
       }
 
       var bounds = ClientRectangle;
@@ -1065,9 +1070,9 @@ namespace VsLikeDoking.UI.Host
 
       var clamped = ClampAutoHidePopupSize(bounds, _AutoHideResizeSide, stripThickness, new Size(reqW, reqH));
 
-      _AutoHidePopupSizeCache[key.Trim()] = clamped;
+      _AutoHidePopupSizeCache[key] = clamped;
 
-      UpdateAutoHidePopupHostLayoutCore(bounds, _AutoHideResizeSide, clamped);
+      UpdateAutoHidePopupLayerLayoutCore(bounds, _AutoHideResizeSide, clamped);
 
       RequestRender();
     }
@@ -1113,92 +1118,81 @@ namespace VsLikeDoking.UI.Host
       }
     }
 
-    // AutoHide Popup Host - View Ownership Guard ==================================================
-
-    private bool EnsureAutoHidePopupViewAttached(Control view)
+    private bool EnsureAutoHidePopupViewAttachedToSurface(Control view)
     {
-      if (_AutoHidePopupHost is null) return false;
       if (view is null || view.IsDisposed) return false;
 
-      var changed = false;
-      var changeNotes = new List<string>(4);
+      // 이미 붙어 있으면 OK
+      if (ReferenceEquals(view.Parent, this)) return true;
+
+      // 재부착 폭주 감지
+      if (RegisterAutoHideRepairBurstAndShouldAbort())
+      {
+        TraceAutoHide("EnsureAutoHidePopupViewAttachedToSurface", "repair burst -> force close popup");
+
+        // 무한 루프 방지: popup 강제 종료 + 잠깐 재활성화 막기
+        _SuppressAutoHideActivateUntilUtc = DateTime.UtcNow.AddMilliseconds(600);
+
+        if (_Manager is not null && _Manager.IsAutoHidePopupVisible)
+          _Manager.HideAutoHidePopup("UI:AutoHide:RepairBurst");
+
+        HideAutoHidePopupLayer(removeView: false);
+        RequestRender();
+        return false;
+      }
 
       try
       {
-        var parent = view.Parent;
-        if (parent is not null && !ReferenceEquals(parent, _AutoHidePopupHost))
-        {
-          parent.Controls.Remove(view);
-          changed = true;
-          changeNotes.Add($"reparent:{parent.GetType().Name}");
-        }
+        try { view.Parent?.Controls.Remove(view); } catch { }
+        Controls.Add(view);
+        view.Visible = true;
+        view.BringToFront();
       }
       catch { }
 
-      try
-      {
-        if (!ReferenceEquals(view.Parent, _AutoHidePopupHost))
-        {
-          view.Dock = DockStyle.Fill;
-          _AutoHidePopupHost.Controls.Add(view);
-          changed = true;
-          changeNotes.Add("attach-to-host");
-        }
-
-        if (!view.Visible)
-        {
-          view.Visible = true;
-          changed = true;
-          changeNotes.Add("view-visible");
-        }
-
-        if (!view.Enabled)
-          view.Enabled = true;
-
-        // Bounds는 UpdateAutoHidePopupHostLayoutCore에서만 맞춘다.
-        // 여기서 매번 보정하면 Dock/Layout과 충돌하며 무의미한 changed 루프를 만들 수 있다.
-
-        // 그립이 항상 위
-        if (_AutoHideResizeGrip is not null && !_AutoHideResizeGrip.IsDisposed)
-          _AutoHideResizeGrip.BringToFront();
-
-        if (changed)
-        {
-          _AutoHidePopupHost.PerformLayout();
-          TraceAutoHide("EnsureAutoHidePopupViewAttached", string.Join(",", changeNotes));
-        }
-      }
-      catch { }
-
-      return changed;
+      return true;
     }
 
-    private void UpdateAutoHidePopupHostPadding(DockAutoHideSide side)
+    private bool RegisterAutoHideRepairBurstAndShouldAbort()
     {
-      if (_AutoHidePopupHost is null || _AutoHidePopupHost.IsDisposed) return;
+      var now = Environment.TickCount64;
 
-      var left = AutoHidePopupContentPadding;
-      var top = AutoHidePopupContentPadding;
-      var right = AutoHidePopupContentPadding;
-      var bottom = AutoHidePopupContentPadding;
+      if (_AutoHideRepairBurstStartMs == 0)
+      {
+        _AutoHideRepairBurstStartMs = now;
+        _AutoHideRepairBurstCount = 0;
+      }
 
-      if (side == DockAutoHideSide.Left)
-        right += AutoHideResizeGripThickness;
-      else if (side == DockAutoHideSide.Right)
-        left += AutoHideResizeGripThickness;
-      else if (side == DockAutoHideSide.Top)
-        bottom += AutoHideResizeGripThickness;
-      else
-        top += AutoHideResizeGripThickness;
+      // 250ms 윈도우
+      if (now - _AutoHideRepairBurstStartMs > 250)
+      {
+        _AutoHideRepairBurstStartMs = now;
+        _AutoHideRepairBurstCount = 0;
+      }
+
+      _AutoHideRepairBurstCount++;
+
+      // 짧은 시간에 12회 이상 Parent 재부착이면 "steal 루프"로 판단
+      return _AutoHideRepairBurstCount > 12;
+    }
+
+    private void UpdateAutoHideChromeTheme()
+    {
+      if (_AutoHidePopupChrome is null || _AutoHidePopupChrome.IsDisposed) return;
+
+      // Renderer 팔레트가 있으면 그 색을 쓰고, 없으면 안전 기본값
+      var border = _Renderer?.Palette[ColorPalette.Role.DockPreviewBorder] ?? SystemColors.Highlight;
+      var fill = _Renderer?.Palette[ColorPalette.Role.AppBack] ?? SystemColors.Control;
 
       try
       {
-        var next = new Padding(left, top, right, bottom);
-        if (_AutoHidePopupHost.Padding != next)
-          _AutoHidePopupHost.Padding = next;
+        _AutoHidePopupChrome.Theme = new AutoHidePopupChromePanel.ChromeTheme(border, fill);
+        _AutoHidePopupChrome.Invalidate();
       }
       catch { }
     }
+
+    // AutoHide Popup Layer - View Ownership Guard =================================================
 
     private bool EnsureAutoHidePopupViewAttachedByManagerState()
     {
@@ -1208,29 +1202,12 @@ namespace VsLikeDoking.UI.Host
       var key = NormalizeAutoHideKey(_Manager.ActiveAutoHideKey);
       if (key is null) return false;
 
-      EnsureAutoHidePopupHost();
-      if (_AutoHidePopupHost is null) return false;
-
-      object? content = null;
-      try { content = _Manager.Registry.Get(key); } catch { content = null; }
-      if (content is null)
-      {
-        try { content = _Manager.Registry.Ensure(key); } catch { content = null; }
-      }
-      if (content is null) return false;
-
-      Control? view = null;
-      try
-      {
-        if (content is IDockContent dc) view = dc.View;
-        else view = TryGetPropertyValueByReflection(content, "View") as Control;
-      }
-      catch { view = null; }
-
+      var content = TryGetOrEnsureContent(key);
+      var view = content?.View;
       if (view is null || view.IsDisposed) return false;
 
       _AutoHidePopupView = view;
-      return EnsureAutoHidePopupViewAttached(view);
+      return EnsureAutoHidePopupViewAttachedToSurface(view);
     }
 
     private static DockVisualTree.DockEdge MapAutoHideSideToEdge(DockAutoHideSide side)
@@ -1433,8 +1410,29 @@ namespace VsLikeDoking.UI.Host
 
         if (repaired)
         {
-          TraceAutoHide("RequestPostPresentAutoHideRepair", "repaired popup view attachment -> invalidate only (no RequestRender)");
-          InvalidateAutoHidePopupAfterRepair();
+          if (_AutoHidePopupChrome is not null && !_AutoHidePopupChrome.IsDisposed && _AutoHidePopupChrome.Visible)
+            _AutoHidePopupChrome.BringToFront();
+        }
+        catch { }
+
+        var repaired = EnsureAutoHidePopupViewAttachedByManagerState();
+
+        try
+        {
+          if (_AutoHidePopupChrome is not null && !_AutoHidePopupChrome.IsDisposed && _AutoHidePopupChrome.Visible)
+          {
+            _AutoHidePopupChrome.BringToFront();
+
+            if (_AutoHideResizeGrip is not null && !_AutoHideResizeGrip.IsDisposed)
+              _AutoHideResizeGrip.BringToFront();
+          }
+        }
+        catch { }
+
+        if (repaired)
+        {
+          TraceAutoHide("RequestPostPresentAutoHideRepair", "repaired popup view attachment -> request render");
+          RequestRender();
         }
       }, false);
     }
@@ -1514,7 +1512,7 @@ namespace VsLikeDoking.UI.Host
           _Presenter.Present(_Tree);
 
           // AutoHide 팝업은 Active 변경으로도 표시 상태가 바뀔 수 있으므로 보정
-          PresentAutoHidePopupHost(ClientRectangle);
+          PresentAutoHidePopupLayer(ClientRectangle);
 
           // (PATCH) Presenter가 뷰를 뺏는 케이스 보정
           EnsureAutoHidePopupViewAttachedByManagerState();
@@ -1656,12 +1654,12 @@ namespace VsLikeDoking.UI.Host
 
       // Sender 체인이 어긋난 경우(동적 재부모/Handle 재생성)에도
       // 현재 포인터가 팝업 호스트 영역 안이면 내부 클릭으로 본다.
-      if (_AutoHidePopupHost is not null && !_AutoHidePopupHost.IsDisposed && _AutoHidePopupHost.Visible)
+      if (!_AutoHidePopupOuterBounds.IsEmpty)
       {
         try
         {
           var client = PointToClient(Control.MousePosition);
-          if (_AutoHidePopupHost.Bounds.Contains(client)) return;
+          if (_AutoHidePopupOuterBounds.Contains(client)) return;
         }
         catch { }
       }
@@ -1810,13 +1808,24 @@ namespace VsLikeDoking.UI.Host
 
     private bool IsFromAutoHidePopupHost(Control source)
     {
-      if (_AutoHidePopupHost is null) return false;
-
-      var cur = source;
-      while (cur is not null)
+      if (_AutoHidePopupChrome is not null)
       {
-        if (ReferenceEquals(cur, _AutoHidePopupHost)) return true;
-        cur = cur.Parent;
+        var cur = source;
+        while (cur is not null)
+        {
+          if (ReferenceEquals(cur, _AutoHidePopupChrome)) return true;
+          cur = cur.Parent;
+        }
+      }
+
+      if (_AutoHideResizeGrip is not null)
+      {
+        var cur = source;
+        while (cur is not null)
+        {
+          if (ReferenceEquals(cur, _AutoHideResizeGrip)) return true;
+          cur = cur.Parent;
+        }
       }
 
       return false;
@@ -1827,15 +1836,7 @@ namespace VsLikeDoking.UI.Host
       if (source is null) return false;
 
       // (PATCH) Host 내부면 항상 "팝업 내부 클릭"
-      if (_AutoHidePopupHost is not null && !_AutoHidePopupHost.IsDisposed && _AutoHidePopupHost.Visible)
-      {
-        var cur = source;
-        while (cur is not null)
-        {
-          if (ReferenceEquals(cur, _AutoHidePopupHost)) return true;
-          cur = cur.Parent;
-        }
-      }
+      if (IsFromAutoHidePopupHost(source)) return true;
 
       // (PATCH) 캐시된 View 기준
       if (_AutoHidePopupView is not null && !_AutoHidePopupView.IsDisposed)
@@ -2606,14 +2607,8 @@ namespace VsLikeDoking.UI.Host
 
     private bool IsPointWithinAutoHideInteractionArea(Point client)
     {
-      if (_AutoHidePopupHost is not null && !_AutoHidePopupHost.IsDisposed && _AutoHidePopupHost.Visible)
-      {
-        try
-        {
-          if (_AutoHidePopupHost.Bounds.Contains(client)) return true;
-        }
-        catch { }
-      }
+      if (!_AutoHidePopupOuterBounds.IsEmpty && _AutoHidePopupOuterBounds.Contains(client))
+        return true;
 
       var hit = DockHitTest.HitTest(_Tree, client);
       if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
@@ -2673,7 +2668,7 @@ namespace VsLikeDoking.UI.Host
       if (_Manager.IsAutoHidePopupVisible)
       {
         _Manager.HideAutoHidePopup("UI:ContextMenu:Pin:PreHide");
-        HideAutoHidePopupHost(removeView: false);
+        HideAutoHidePopupLayer(removeView: false);
       }
 
       _PendingDismissAutoHideOnMouseUp = false;
@@ -2785,7 +2780,7 @@ namespace VsLikeDoking.UI.Host
       try
       {
         // "Show" 우선(토글은 상태 불일치 시 반대로 동작 가능)
-        var shown = _Manager.ShowAutoHidePopup(key, "UI:AutoHideTab");
+        var shown = _Manager.ShowAutoHidePopup( key, "UI:AutoHideTab" );
         TraceAutoHide("HandleActivateAutoHideTab.ShowResult", $"key={key}, shown={shown}");
 
         // ShowAutoHidePopup 내부에서 ActiveContent까지 맞추므로 여기서 다시 SetActiveContent를 호출하면
@@ -2837,7 +2832,7 @@ namespace VsLikeDoking.UI.Host
       if (!_Manager.IsAutoHidePopupVisible)
       {
         TraceAutoHide("HandleDismissAutoHidePopup", "popup already hidden");
-        HideAutoHidePopupHost(removeView: false);
+        HideAutoHidePopupLayer(removeView: false);
         return;
       }
 
@@ -2853,7 +2848,7 @@ namespace VsLikeDoking.UI.Host
       _ConsumeFirstDismissAfterAutoHideActivate = false;
 
       // UI 즉시 숨김(Manager 이벤트 지연/누락 대비)
-      HideAutoHidePopupHost(removeView: false);
+      HideAutoHidePopupLayer(removeView: false);
 
       RequestRender();
     }
@@ -2947,15 +2942,8 @@ namespace VsLikeDoking.UI.Host
       try { client = PointToClient(Control.MousePosition); }
       catch { return false; }
 
-      if (_AutoHidePopupHost is not null && !_AutoHidePopupHost.IsDisposed)
-      {
-        Rectangle popupBounds;
-        try { popupBounds = _AutoHidePopupHost.Bounds; }
-        catch { popupBounds = Rectangle.Empty; }
-
-        if (!popupBounds.IsEmpty && popupBounds.Contains(client))
-          return true;
-      }
+      if (!_AutoHidePopupOuterBounds.IsEmpty && _AutoHidePopupOuterBounds.Contains(client))
+        return true;
 
       var hit = DockHitTest.HitTest(_Tree, client);
       if (hit.Kind is DockVisualTree.RegionKind.AutoHideTab or DockVisualTree.RegionKind.AutoHideStrip)
@@ -3389,6 +3377,45 @@ namespace VsLikeDoking.UI.Host
     }
 
     // Overlay Form =================================================================================
+
+    private sealed class AutoHidePopupChromePanel : Panel
+    {
+      public readonly struct ChromeTheme
+      {
+        public ChromeTheme(Color borderColor, Color fillColor)
+        {
+          BorderColor = borderColor;
+          FillColor = fillColor;
+        }
+
+        public Color BorderColor { get; }
+        public Color FillColor { get; }
+      }
+
+      public ChromeTheme? Theme { get; set; }
+
+      protected override void OnPaint(PaintEventArgs e)
+      {
+        base.OnPaint(e);
+
+        var rc = ClientRectangle;
+        if (rc.Width <= 0 || rc.Height <= 0) return;
+
+        var t = Theme;
+        var fill = t?.FillColor ?? SystemColors.Control;
+        var border = t?.BorderColor ?? SystemColors.Highlight;
+
+        using var b = new SolidBrush(fill);
+        e.Graphics.FillRectangle(b, rc);
+
+        rc.Width -= 1;
+        rc.Height -= 1;
+        if (rc.Width <= 0 || rc.Height <= 0) return;
+
+        using var p = new Pen(border, 1f);
+        e.Graphics.DrawRectangle(p, rc);
+      }
+    }
 
     private sealed class DockPreviewOverlayForm : Form
     {
