@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 
 using VsLikeDoking.Abstractions;
-using VsLikeDoking.Layout.Model;
+using VsLikeDoking.Layout.Nodes;
 using VsLikeDoking.Rendering.Theme;
 using VsLikeDoking.Utils;
 
