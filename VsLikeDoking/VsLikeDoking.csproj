@@ -5,7 +5,9 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
 	<UseWindowsForms>true</UseWindowsForms>
-	<FileVersion>260123.0.1</FileVersion>
+	<Version>26.2.1.0</Version>
+	<AssemblyVersion>26.2.1.0</AssemblyVersion>
+	<FileVersion>26.2.1.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
