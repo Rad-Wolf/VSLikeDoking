@@ -2,7 +2,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 
 using VsLikeDoking.Abstractions;
 using VsLikeDoking.Layout.Model;
@@ -15,6 +17,8 @@ namespace VsLikeDoking.Core
   /// <summary>현재 레이아웃 루트(DockNode)를 보유하고, DockMutator로 트리를 변경한뒤 DockValidator로 정리하고, 저장/복원(Serializer/Json/Versioning)과 컨텐츠 생성/상태 로드(IDockContentFatory/IDockPersistable)를 묶어서 운용한다.</summary>
   public class DockManager : IDisposable
   {
+    private const bool AutoHideTraceEnabled = true;
+    private static readonly string AutoHideTraceFilePath = Path.Combine(Path.GetTempPath(), "VsLikeDoking-autohide-trace.log");
     // Fields =====================================================================================================
 
     private DockNode _Root;
@@ -168,6 +172,8 @@ namespace VsLikeDoking.Core
       var key = persistKey.Trim();
 
       var wasActive = string.Equals(_ActiveContent?.PersistKey, key, StringComparison.Ordinal);
+
+      TraceAutoHide("PinToAutoHide", $"key={key}, side={side}, showPopup={showPopup}, reason={reason}");
 
       var next = DockMutator.PinToAutoHide(_Root, key, side, out var didChange, popupSize);
       if (!didChange) return false;
@@ -483,6 +489,8 @@ namespace VsLikeDoking.Core
       Guard.NotNullOrWhiteSpace(persistKey);
       ThrowIfDisposed();
 
+      TraceAutoHide("ShowAutoHidePopup", $"request key={persistKey}, reason={reason}");
+
       var key = NormalizeKey(persistKey);
       if (key is null) return false;
 
@@ -493,6 +501,8 @@ namespace VsLikeDoking.Core
       SetAutoHidePopupKeyCore(key, reason ?? $"AutoHide:Show:{key}");
       SetActiveContentDirect(key, updateLastNonAutoHide: false);
 
+      TraceAutoHide("ShowAutoHidePopup", $"applied key={key}");
+
       return true;
     }
 
@@ -500,6 +510,8 @@ namespace VsLikeDoking.Core
     public void HideAutoHidePopup(string? reason = null)
     {
       ThrowIfDisposed();
+
+      TraceAutoHide("HideAutoHidePopup", $"reason={reason}");
 
       var oldKey = _ActiveAutoHideKey;
       if (string.IsNullOrWhiteSpace(oldKey)) return;
@@ -512,6 +524,18 @@ namespace VsLikeDoking.Core
         var fallback = SelectFallbackGroupActiveKey(preferDocument: true);
         SetActiveContentDirect(fallback, updateLastNonAutoHide: true);
       }
+    }
+
+    private void TraceAutoHide(string stage, string detail)
+    {
+      if (!AutoHideTraceEnabled) return;
+      var line = $"[AH][Manager][{DateTime.Now:HH:mm:ss.fff}] {stage} | {detail} | activeAh={_ActiveAutoHideKey ?? "(null)"}, activeContent={_ActiveContent?.PersistKey ?? "(null)"}";
+
+      Debug.WriteLine(line);
+      Trace.WriteLine(line);
+
+      try { File.AppendAllText(AutoHideTraceFilePath, line + Environment.NewLine); }
+      catch { }
     }
 
     /// <summary>AutoHide 팝업(슬라이드)을 토글한다. 성공하면 true.</summary>
@@ -868,6 +892,8 @@ namespace VsLikeDoking.Core
     {
       var key = NormalizeKey(persistKey);
 
+      TraceAutoHide("SetAutoHidePopupKeyCore", $"next={key ?? "(null)"}, reason={reason}");
+
       if (string.Equals(_ActiveAutoHideKey, key, StringComparison.Ordinal))
       {
         // 레이아웃이 교체/로드된 경우를 대비해 상태 동기화는 항상 수행
@@ -880,6 +906,7 @@ namespace VsLikeDoking.Core
       SyncAutoHidePopupStateToLayout(ref _ActiveAutoHideKey, _Root);
 
       Events.RaiseLayoutChanged(_Root, _Root, reason ?? (key is null ? "AutoHide:Hide" : $"AutoHide:Show:{key}"));
+      TraceAutoHide("SetAutoHidePopupKeyCore", $"applied={_ActiveAutoHideKey ?? "(null)"}");
       return true;
     }
 
