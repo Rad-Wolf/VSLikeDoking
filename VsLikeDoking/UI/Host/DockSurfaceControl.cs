@@ -2673,6 +2673,12 @@ namespace VsLikeDoking.UI.Host
       _PendingExternalOutsideClickDismiss = false;
       _ConsumeFirstDismissAfterAutoHideActivate = true;
 
+      // 새 활성화 시점에는 이전 클릭에서 남은 deferred dismiss를 폐기한다.
+      _PendingDismissAutoHideOnMouseUp = false;
+      _PendingDismissStartedFromAutoHideInteraction = false;
+      _PendingExternalOutsideClickDismiss = false;
+      _ConsumeFirstDismissAfterAutoHideActivate = true;
+
       if (!TryResolveAutoHideTabIndices( stripIndex, tabIndex, out _, out var globalIndex ))
         return;
 
