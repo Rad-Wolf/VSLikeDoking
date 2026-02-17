@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 
 using VsLikeDoking.Abstractions;
 using VsLikeDoking.Layout.Model;
@@ -17,6 +18,7 @@ namespace VsLikeDoking.Core
   public class DockManager : IDisposable
   {
     private const bool AutoHideTraceEnabled = true;
+    private static readonly string AutoHideTraceFilePath = Path.Combine(AppContext.BaseDirectory, "autohide-trace.log");
     // Fields =====================================================================================================
 
     private DockNode _Root;
@@ -527,7 +529,13 @@ namespace VsLikeDoking.Core
     private void TraceAutoHide(string stage, string detail)
     {
       if (!AutoHideTraceEnabled) return;
-      Debug.WriteLine($"[AH][Manager][{DateTime.Now:HH:mm:ss.fff}] {stage} | {detail} | activeAh={_ActiveAutoHideKey ?? "(null)"}, activeContent={_ActiveContent?.PersistKey ?? "(null)"}");
+      var line = $"[AH][Manager][{DateTime.Now:HH:mm:ss.fff}] {stage} | {detail} | activeAh={_ActiveAutoHideKey ?? "(null)"}, activeContent={_ActiveContent?.PersistKey ?? "(null)"}";
+
+      Debug.WriteLine(line);
+      Trace.WriteLine(line);
+
+      try { File.AppendAllText(AutoHideTraceFilePath, line + Environment.NewLine); }
+      catch { }
     }
 
     /// <summary>AutoHide 팝업(슬라이드)을 토글한다. 성공하면 true.</summary>

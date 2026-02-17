@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
 
@@ -73,6 +74,7 @@ namespace VsLikeDoking.UI.Host
     private const int AutoHidePopupContentPadding = 4;
     private const int AutoHideResizeGripThickness = 6;
     private const bool AutoHideTraceEnabled = true;
+    private static readonly string AutoHideTraceFilePath = Path.Combine(AppContext.BaseDirectory, "autohide-trace.log");
 
     // AutoHide Popup Host ========================================================================
 
@@ -2859,7 +2861,13 @@ namespace VsLikeDoking.UI.Host
         visible = _Manager.IsAutoHidePopupVisible;
       }
 
-      Debug.WriteLine($"[AH][Surface][{DateTime.Now:HH:mm:ss.fff}] {stage} | {detail} | visible={visible}, active={active}, pend={_PendingDismissAutoHideOnMouseUp}, pendExt={_PendingExternalOutsideClickDismiss}, consume1={_ConsumeFirstDismissAfterAutoHideActivate}");
+      var line = $"[AH][Surface][{DateTime.Now:HH:mm:ss.fff}] {stage} | {detail} | visible={visible}, active={active}, pend={_PendingDismissAutoHideOnMouseUp}, pendExt={_PendingExternalOutsideClickDismiss}, consume1={_ConsumeFirstDismissAfterAutoHideActivate}";
+
+      Debug.WriteLine(line);
+      Trace.WriteLine(line);
+
+      try { File.AppendAllText(AutoHideTraceFilePath, line + Environment.NewLine); }
+      catch { }
     }
 
 
