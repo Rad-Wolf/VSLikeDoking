@@ -1076,16 +1076,21 @@ namespace VsLikeDoking.UI.Host
 
     // AutoHide Popup Host - View Ownership Guard ==================================================
 
-    private void EnsureAutoHidePopupViewAttached(Control view)
+    private bool EnsureAutoHidePopupViewAttached(Control view)
     {
-      if (_AutoHidePopupHost is null) return;
-      if (view is null || view.IsDisposed) return;
+      if (_AutoHidePopupHost is null) return false;
+      if (view is null || view.IsDisposed) return false;
+
+      var changed = false;
 
       try
       {
         var parent = view.Parent;
         if (parent is not null && !ReferenceEquals(parent, _AutoHidePopupHost))
+        {
           parent.Controls.Remove(view);
+          changed = true;
+        }
       }
       catch { }
 
@@ -1095,21 +1100,38 @@ namespace VsLikeDoking.UI.Host
         {
           view.Dock = DockStyle.Fill;
           _AutoHidePopupHost.Controls.Add(view);
+          changed = true;
         }
 
-        view.Visible = true;
-        view.Enabled = true;
+        if (!view.Visible)
+        {
+          view.Visible = true;
+          changed = true;
+        }
+
+        if (!view.Enabled)
+          view.Enabled = true;
 
         if (_AutoHidePopupHost.ClientSize.Width > 0 && _AutoHidePopupHost.ClientSize.Height > 0)
-          view.Bounds = _AutoHidePopupHost.DisplayRectangle;
+        {
+          var displayRect = _AutoHidePopupHost.DisplayRectangle;
+          if (view.Bounds != displayRect)
+          {
+            view.Bounds = displayRect;
+            changed = true;
+          }
+        }
 
         // 그립이 항상 위
         if (_AutoHideResizeGrip is not null && !_AutoHideResizeGrip.IsDisposed)
           _AutoHideResizeGrip.BringToFront();
 
-        _AutoHidePopupHost.PerformLayout();
+        if (changed)
+          _AutoHidePopupHost.PerformLayout();
       }
       catch { }
+
+      return changed;
     }
 
     private void UpdateAutoHidePopupHostPadding(DockAutoHideSide side)
@@ -1134,16 +1156,16 @@ namespace VsLikeDoking.UI.Host
       catch { }
     }
 
-    private void EnsureAutoHidePopupViewAttachedByManagerState()
+    private bool EnsureAutoHidePopupViewAttachedByManagerState()
     {
-      if (_Manager is null) return;
-      if (!_Manager.IsAutoHidePopupVisible) return;
+      if (_Manager is null) return false;
+      if (!_Manager.IsAutoHidePopupVisible) return false;
 
       var key = NormalizeAutoHideKey(_Manager.ActiveAutoHideKey);
-      if (key is null) return;
+      if (key is null) return false;
 
       EnsureAutoHidePopupHost();
-      if (_AutoHidePopupHost is null) return;
+      if (_AutoHidePopupHost is null) return false;
 
       object? content = null;
       try { content = _Manager.Registry.Get(key); } catch { content = null; }
@@ -1151,7 +1173,7 @@ namespace VsLikeDoking.UI.Host
       {
         try { content = _Manager.Registry.Ensure(key); } catch { content = null; }
       }
-      if (content is null) return;
+      if (content is null) return false;
 
       Control? view = null;
       try
@@ -1161,10 +1183,10 @@ namespace VsLikeDoking.UI.Host
       }
       catch { view = null; }
 
-      if (view is null || view.IsDisposed) return;
+      if (view is null || view.IsDisposed) return false;
 
       _AutoHidePopupView = view;
-      EnsureAutoHidePopupViewAttached(view);
+      return EnsureAutoHidePopupViewAttached(view);
     }
 
     private static DockVisualTree.DockEdge MapAutoHideSideToEdge(DockAutoHideSide side)
@@ -1371,7 +1393,7 @@ namespace VsLikeDoking.UI.Host
         }
         catch { }
 
-        EnsureAutoHidePopupViewAttachedByManagerState();
+        var repaired = EnsureAutoHidePopupViewAttachedByManagerState();
 
         try
         {
@@ -1385,7 +1407,11 @@ namespace VsLikeDoking.UI.Host
         }
         catch { }
 
-        RequestRender();
+        if (repaired)
+        {
+          TraceAutoHide("RequestPostPresentAutoHideRepair", "repaired popup view attachment -> request render");
+          RequestRender();
+        }
       }, false);
     }
 
