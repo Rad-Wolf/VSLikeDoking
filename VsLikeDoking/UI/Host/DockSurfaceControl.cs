@@ -2583,7 +2583,18 @@ namespace VsLikeDoking.UI.Host
     {
       if (_Manager is null) return;
 
-      if (_Manager.PinToAutoHide(key, side, popupSize: null, showPopup: true, reason: $"UI:ContextMenu:Pin:{side}:{key}"))
+      // 우클릭 컨텍스트 메뉴로 AutoHide 생성할 때 기존 AutoHide 팝업이 열려 있으면
+      // 즉시 Show/Hide 경쟁이 붙어 깜빡임/여닫기 루프가 생길 수 있으므로 먼저 닫는다.
+      if (_Manager.IsAutoHidePopupVisible)
+        _Manager.HideAutoHidePopup("UI:ContextMenu:Pin:PreHide");
+
+      _PendingDismissAutoHideOnMouseUp = false;
+      _PendingDismissStartedFromAutoHideInteraction = false;
+      _PendingExternalOutsideClickDismiss = false;
+      _ConsumeFirstDismissAfterAutoHideActivate = false;
+
+      // 메뉴스트립 경로와 동일하게 Pin만 수행하고, 즉시 popup show는 하지 않는다.
+      if (_Manager.PinToAutoHide(key, side, popupSize: null, showPopup: false, reason: $"UI:ContextMenu:Pin:{side}:{key}"))
         MarkVisualDirtyAndRender();
     }
 
