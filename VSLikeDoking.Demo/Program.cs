@@ -9,12 +9,12 @@ namespace VSLikeDoking.Demo
 {
   internal static class Program
   {
-    // ¾Û ÁøÀÔÁ¡
+    // ì•± ì§„ì…ì 
     [STAThread]
     private static void Main()
     {
       ApplicationConfiguration.Initialize();
-      Application.Run(new DockHostApiSmokeTestForm());
+      Application.Run(new DockHostUsageGuideForm());
     }
   }
 }

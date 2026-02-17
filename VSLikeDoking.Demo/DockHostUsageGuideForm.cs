@@ -1,4 +1,4 @@
-﻿// VsLikeDocking - VsLikeDoking.Demo - Demo/Forms/DockHostApiSmokeTestForm.cs - DockHostApiSmokeTestForm - (File)
+﻿// VsLikeDocking - VsLikeDoking.Demo - Demo/Forms/DockHostUsageGuideForm.cs - DockHostUsageGuideForm - (File)
 
 using System;
 using System.Drawing;
@@ -16,7 +16,7 @@ using VsLikeDoking.UI.Host;
 
 namespace VsLikeDoking.Demo.Forms
 {
-  internal sealed class DockHostApiSmokeTestForm : Form
+  internal sealed class DockHostUsageGuideForm : Form
   {
     // Fields =====================================================================================================
 
@@ -52,9 +52,9 @@ namespace VsLikeDoking.Demo.Forms
 
     // Ctor =======================================================================================================
 
-    public DockHostApiSmokeTestForm()
+    public DockHostUsageGuideForm()
     {
-      Text = "DockHostControl API Smoke Test (MenuStrip)";
+      Text = "DockHostControl Usage Guide Demo";
       StartPosition = FormStartPosition.CenterScreen;
       Width = 1400;
       Height = 900;
@@ -101,7 +101,7 @@ namespace VsLikeDoking.Demo.Forms
       BuildMenu();
 
       RecreateHost();
-      Log("[BOOT] Form constructed.");
+      Log("[BOOT] Usage demo form initialized.");
 
       Load += OnFormLoad;
       Shown += OnFormShown;
@@ -127,12 +127,12 @@ namespace VsLikeDoking.Demo.Forms
       init.DropDownItems.Add(_MiUseDefaultLayout);
       init.DropDownItems.Add(new ToolStripSeparator());
 
-      var miInit = new ToolStripMenuItem("Initialize()");
-      var miInitDefault = new ToolStripMenuItem("Init + DefaultLayout + Seed");
-      var miInitProvided = new ToolStripMenuItem("Init(manager, renderer, factory) + Seed");
+      var miInit = new ToolStripMenuItem("Initialize() [quick start]");
+      var miInitDefault = new ToolStripMenuItem("Initialize + Default Layout + Seed Content");
+      var miInitProvided = new ToolStripMenuItem("Initialize with Provided Manager/Renderer/Factory");
       var miRequestRender = new ToolStripMenuItem("RequestRender()");
       var miSetRootNull = new ToolStripMenuItem("SetRoot(null)");
-      var miRecreateHost = new ToolStripMenuItem("Recreate Host");
+      var miRecreateHost = new ToolStripMenuItem("Recreate Host (reset demo runtime)");
 
       miInit.Click += (s, e) => RunInit(InitMode.InitializeOnly);
       miInitDefault.Click += (s, e) => RunInit(InitMode.InitializeWithDefaultLayout);
