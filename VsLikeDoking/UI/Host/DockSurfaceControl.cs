@@ -1411,11 +1411,12 @@ namespace VsLikeDoking.UI.Host
         if (repaired)
         {
           if (_AutoHidePopupChrome is not null && !_AutoHidePopupChrome.IsDisposed && _AutoHidePopupChrome.Visible)
+          {
             _AutoHidePopupChrome.BringToFront();
+          }
         }
-        catch { }
 
-        var repaired = EnsureAutoHidePopupViewAttachedByManagerState();
+        repaired = EnsureAutoHidePopupViewAttachedByManagerState();
 
         try
         {
@@ -1435,14 +1436,6 @@ namespace VsLikeDoking.UI.Host
           RequestRender();
         }
       }, false);
-    }
-    private void InvalidateAutoHidePopupAfterRepair()
-    {
-      if (_AutoHidePopupHost != null && !_AutoHidePopupHost.IsDisposed)
-        _AutoHidePopupHost.Invalidate(true);
-
-      if (_AutoHidePopupView != null && !_AutoHidePopupView.IsDisposed)
-        _AutoHidePopupView.Invalidate(true);
     }
 
     private void FlushInvalidate()
@@ -2780,7 +2773,7 @@ namespace VsLikeDoking.UI.Host
       try
       {
         // "Show" 우선(토글은 상태 불일치 시 반대로 동작 가능)
-        var shown = _Manager.ShowAutoHidePopup( key, "UI:AutoHideTab" );
+        var shown = _Manager.ShowAutoHidePopup(key, "UI:AutoHideTab");
         TraceAutoHide("HandleActivateAutoHideTab.ShowResult", $"key={key}, shown={shown}");
 
         // ShowAutoHidePopup 내부에서 ActiveContent까지 맞추므로 여기서 다시 SetActiveContent를 호출하면
