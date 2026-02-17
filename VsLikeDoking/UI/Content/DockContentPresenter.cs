@@ -281,6 +281,18 @@ namespace VsLikeDoking.UI.Content
           continue;
         }
 
+        // 현재 활성 AutoHide 팝업 키는 Surface 직계 자식으로 유지될 수 있으므로
+        // Presenter의 비가시 정리에서 숨기지 않는다.
+        if (_Manager is not null
+          && _Manager.IsAutoHidePopupVisible
+          && !string.IsNullOrWhiteSpace(_Manager.ActiveAutoHideKey)
+          && string.Equals(_Manager.ActiveAutoHideKey, key, StringComparison.Ordinal))
+        {
+          if (view is not null && !view.IsDisposed && ReferenceEquals(view.Parent, _Surface) && !view.Visible)
+            view.Visible = true;
+          continue;
+        }
+
         if (view is null || view.IsDisposed)
         {
           try { if (view is not null && ReferenceEquals(view.Parent, _Surface)) _Surface.Controls.Remove(view); } catch { }
