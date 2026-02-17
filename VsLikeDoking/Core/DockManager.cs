@@ -18,7 +18,7 @@ namespace VsLikeDoking.Core
   public class DockManager : IDisposable
   {
     private const bool AutoHideTraceEnabled = true;
-    private static readonly string AutoHideTraceFilePath = Path.Combine(AppContext.BaseDirectory, "autohide-trace.log");
+    private static readonly string AutoHideTraceFilePath = Path.Combine(Path.GetTempPath(), "VsLikeDoking-autohide-trace.log");
     // Fields =====================================================================================================
 
     private DockNode _Root;
@@ -892,6 +892,8 @@ namespace VsLikeDoking.Core
     {
       var key = NormalizeKey(persistKey);
 
+      TraceAutoHide("SetAutoHidePopupKeyCore", $"next={key ?? "(null)"}, reason={reason}");
+
       if (string.Equals(_ActiveAutoHideKey, key, StringComparison.Ordinal))
       {
         // 레이아웃이 교체/로드된 경우를 대비해 상태 동기화는 항상 수행
@@ -904,6 +906,7 @@ namespace VsLikeDoking.Core
       SyncAutoHidePopupStateToLayout(ref _ActiveAutoHideKey, _Root);
 
       Events.RaiseLayoutChanged(_Root, _Root, reason ?? (key is null ? "AutoHide:Hide" : $"AutoHide:Show:{key}"));
+      TraceAutoHide("SetAutoHidePopupKeyCore", $"applied={_ActiveAutoHideKey ?? "(null)"}");
       return true;
     }
 

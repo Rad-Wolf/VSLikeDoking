@@ -74,7 +74,7 @@ namespace VsLikeDoking.UI.Host
     private const int AutoHidePopupContentPadding = 4;
     private const int AutoHideResizeGripThickness = 6;
     private const bool AutoHideTraceEnabled = true;
-    private static readonly string AutoHideTraceFilePath = Path.Combine(AppContext.BaseDirectory, "autohide-trace.log");
+    private static readonly string AutoHideTraceFilePath = Path.Combine(Path.GetTempPath(), "VsLikeDoking-autohide-trace.log");
 
     // AutoHide Popup Host ========================================================================
 
@@ -709,8 +709,11 @@ namespace VsLikeDoking.UI.Host
 
     private void PresentAutoHidePopupHost(Rectangle bounds)
     {
+      TraceAutoHide("PresentAutoHidePopupHost", "enter");
+
       if (_Manager is null || _Root is null)
       {
+        TraceAutoHide("PresentAutoHidePopupHost", "manager/root null -> hide host");
         HideAutoHidePopupHost(removeView: true);
         return;
       }
@@ -718,6 +721,7 @@ namespace VsLikeDoking.UI.Host
       if (!_Manager.IsAutoHidePopupVisible)
       {
         _ConsumeFirstDismissAfterAutoHideActivate = false;
+        TraceAutoHide("PresentAutoHidePopupHost", "manager says popup hidden -> hide host");
         HideAutoHidePopupHost(removeView: false);
         return;
       }
@@ -725,6 +729,7 @@ namespace VsLikeDoking.UI.Host
       var key = NormalizeAutoHideKey(_Manager.ActiveAutoHideKey);
       if (key is null)
       {
+        TraceAutoHide("PresentAutoHidePopupHost", "active key null -> hide host");
         HideAutoHidePopupHost(removeView: false);
         return;
       }
@@ -742,6 +747,7 @@ namespace VsLikeDoking.UI.Host
       var content = _Manager.Registry.Ensure(key);
       if (content is null)
       {
+        TraceAutoHide("PresentAutoHidePopupHost", $"content not found for key={key}");
         HideAutoHidePopupHost(removeView: true);
         return;
       }
@@ -749,6 +755,7 @@ namespace VsLikeDoking.UI.Host
       var view = content.View;
       if (view is null || view.IsDisposed)
       {
+        TraceAutoHide("PresentAutoHidePopupHost", $"view missing/disposed for key={key}");
         HideAutoHidePopupHost(removeView: true);
         return;
       }
@@ -775,6 +782,7 @@ namespace VsLikeDoking.UI.Host
 
         view.BringToFront();
         view.Visible = true;
+        TraceAutoHide("PresentAutoHidePopupHost", $"host shown key={key}");
       }
       catch { }
     }
@@ -801,6 +809,8 @@ namespace VsLikeDoking.UI.Host
 
     private void HideAutoHidePopupHost(bool removeView)
     {
+      TraceAutoHide("HideAutoHidePopupHost", $"removeView={removeView}");
+
       if (_AutoHidePopupHost is null) { _AutoHidePopupKey = null; _AutoHidePopupView = null; return; }
 
       try { _AutoHidePopupHost.Visible = false; } catch { }
@@ -1414,6 +1424,8 @@ namespace VsLikeDoking.UI.Host
     private void OnManagerLayoutChanged(object? sender, DockLayoutChangedEventArgs e)
     {
       if (IsDisposed) return;
+
+      TraceAutoHide("OnManagerLayoutChanged", e.Reason ?? "(no-reason)");
 
       if (IsHandleCreated && InvokeRequired)
       {
