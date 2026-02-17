@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
-using VsLikeDoking.Abstractions;
 using VsLikeDoking.Core;
 using VsLikeDoking.Layout.Nodes;
 using VsLikeDoking.UI.Visual;
@@ -25,10 +24,11 @@ namespace VsLikeDoking.UI.Content
     private Control? _Surface;
     private DockManager? _Manager;
 
-    // (Surface 직속으로 붙인 컨텐츠만 관리한다. AutoHide PopupHost(Panel) 아래로 간 뷰는 여기서 건드리지 않는다.)
+    // (Surface 직속으로 붙인 컨텐츠만 관리한다.
+    // AutoHide PopupHost(Panel) 아래로 간 뷰는 여기서 건드리지 않는다.)
     private readonly Dictionary<string, Control> _ByKey = new(StringComparer.Ordinal);
     private readonly HashSet<string> _VisibleKeys = new(StringComparer.Ordinal);
-
+    private readonly HashSet<string> _AutoHideKeys = new(StringComparer.Ordinal);
     private readonly List<string> _RemoveKeys = new();
 
     private bool _Disposed;
@@ -41,7 +41,8 @@ namespace VsLikeDoking.UI.Content
       Guard.NotNull(surface);
       Guard.NotNull(manager);
 
-      if (ReferenceEquals(_Surface, surface) && ReferenceEquals(_Manager, manager)) return;
+      if (ReferenceEquals(_Surface, surface) && ReferenceEquals(_Manager, manager))
+        return;
 
       Unbind();
 
@@ -53,6 +54,7 @@ namespace VsLikeDoking.UI.Content
     public void Unbind()
     {
       Clear(true);
+
       _Surface = null;
       _Manager = null;
     }
@@ -65,9 +67,11 @@ namespace VsLikeDoking.UI.Content
       if (_Disposed) return;
       if (_Surface is null) return;
       if (_Manager is null) return;
+
       Guard.NotNull(tree);
 
       _VisibleKeys.Clear();
+      CollectAutoHideKeys(tree);
 
       _Surface.SuspendLayout();
       try
@@ -89,6 +93,8 @@ namespace VsLikeDoking.UI.Content
     {
       if (_Disposed) return;
 
+      _AutoHideKeys.Clear();
+
       if (_Surface is null)
       {
         _ByKey.Clear();
@@ -105,13 +111,16 @@ namespace VsLikeDoking.UI.Content
           if (c is null || c.IsDisposed) continue;
 
           // Clear는 “전체 정리”이므로 부모가 어디든 숨김 처리한다.
-          if (c.Visible) c.Visible = false;
+          if (c.Visible)
+            c.Visible = false;
 
           if (detach && ReferenceEquals(c.Parent, _Surface))
             _Surface.Controls.Remove(c);
         }
 
-        if (detach) _ByKey.Clear();
+        if (detach)
+          _ByKey.Clear();
+
         _VisibleKeys.Clear();
       }
       finally
@@ -126,13 +135,31 @@ namespace VsLikeDoking.UI.Content
     public void Dispose()
     {
       if (_Disposed) return;
+
       _Disposed = true;
 
-      try { Unbind(); }
-      catch { }
+      try { Unbind(); } catch { }
     }
 
     // Internals ===================================================================================================
+
+    private void CollectAutoHideKeys(DockVisualTree tree)
+    {
+      _AutoHideKeys.Clear();
+
+      var tabs = tree.AutoHideTabs;
+      for (int i = 0; i < tabs.Count; i++)
+      {
+        if (tabs[i].ContentKey is not string key)
+          continue;
+
+        key = key.Trim();
+        if (key.Length == 0)
+          continue;
+
+        _AutoHideKeys.Add(key);
+      }
+    }
 
     private void PresentDockGroups(DockVisualTree tree)
     {
@@ -145,7 +172,6 @@ namespace VsLikeDoking.UI.Content
       {
         var gv = groups[gi];
         var bounds = gv.ContentBounds;
-
         if (bounds.IsEmpty) continue;
 
         var key = GetActiveKey(gv.Node);
@@ -154,11 +180,17 @@ namespace VsLikeDoking.UI.Content
         key = key.Trim();
         if (key.Length == 0) continue;
 
-        // AutoHide 팝업으로 활성화된 키는 Surface 직속 배치 대상이 아니다.
-        // (DockSurfaceControl의 PopupHost가 소유)
-        if (_Manager.IsAutoHidePopupVisible
-          && !string.IsNullOrWhiteSpace(_Manager.ActiveAutoHideKey)
-          && string.Equals(_Manager.ActiveAutoHideKey, key, StringComparison.Ordinal))
+        // 핵심 FIX:
+        // AutoHide(핀) 키는 어떤 경우에도 Surface 직속 배치 대상이 아니다.
+        // (PopupHost 소유권과 Presenter 재부모화가 충돌하면 무한 루프가 걸린다)
+        if (_AutoHideKeys.Contains(key))
+          continue;
+
+        // AutoHide 팝업으로 활성화된 키도 Surface 직속 배치 대상이 아니다.
+        // (안전망: AutoHideTabs 누락 상황 방어)
+        if (_Manager.IsAutoHidePopupVisible &&
+            !string.IsNullOrWhiteSpace(_Manager.ActiveAutoHideKey) &&
+            string.Equals(_Manager.ActiveAutoHideKey, key, StringComparison.Ordinal))
           continue;
 
         // Ensure는 "없을 때만" (매 프레임 팩토리 호출 방지)
@@ -170,7 +202,6 @@ namespace VsLikeDoking.UI.Content
 
         AttachIfNeeded(key, view);
         LayoutView(view, bounds);
-
         _VisibleKeys.Add(key);
       }
     }
@@ -178,10 +209,12 @@ namespace VsLikeDoking.UI.Content
     private static string? GetActiveKey(DockGroupNode group)
     {
       var key = group.ActiveKey;
-      if (!string.IsNullOrWhiteSpace(key)) return key;
+      if (!string.IsNullOrWhiteSpace(key))
+        return key;
 
       var items = group.Items;
-      if (items.Count <= 0) return null;
+      if (items.Count <= 0)
+        return null;
 
       return items[0].PersistKey;
     }
@@ -198,13 +231,7 @@ namespace VsLikeDoking.UI.Content
           if (existing is not null && !existing.IsDisposed)
           {
             try { if (existing.Visible) existing.Visible = false; } catch { }
-
-            try
-            {
-              if (ReferenceEquals(existing.Parent, _Surface))
-                _Surface.Controls.Remove(existing);
-            }
-            catch { }
+            try { if (ReferenceEquals(existing.Parent, _Surface)) _Surface.Controls.Remove(existing); } catch { }
           }
 
           _ByKey[key] = view;
@@ -224,7 +251,9 @@ namespace VsLikeDoking.UI.Content
         }
         catch { }
 
-        if (view.Dock != DockStyle.None) view.Dock = DockStyle.None;
+        if (view.Dock != DockStyle.None)
+          view.Dock = DockStyle.None;
+
         _Surface.Controls.Add(view);
       }
     }
@@ -235,7 +264,8 @@ namespace VsLikeDoking.UI.Content
       if (view.Left != bounds.X || view.Top != bounds.Y || view.Width != bounds.Width || view.Height != bounds.Height)
         view.SetBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height);
 
-      if (!view.Visible) view.Visible = true;
+      if (!view.Visible)
+        view.Visible = true;
     }
 
     private void HideNonVisible(bool detach)
@@ -253,18 +283,13 @@ namespace VsLikeDoking.UI.Content
         {
           if (view is not null && !view.IsDisposed && ReferenceEquals(view.Parent, _Surface) && !view.Visible)
             view.Visible = true;
+
           continue;
         }
 
         if (view is null || view.IsDisposed)
         {
-          try
-          {
-            if (view is not null && ReferenceEquals(view.Parent, _Surface))
-              _Surface.Controls.Remove(view);
-          }
-          catch { }
-
+          try { if (view is not null && ReferenceEquals(view.Parent, _Surface)) _Surface.Controls.Remove(view); } catch { }
           _RemoveKeys.Add(key);
           continue;
         }
@@ -275,7 +300,8 @@ namespace VsLikeDoking.UI.Content
         if (!ReferenceEquals(view.Parent, _Surface))
           continue;
 
-        if (view.Visible) view.Visible = false;
+        if (view.Visible)
+          view.Visible = false;
 
         if (detach)
         {
