@@ -890,8 +890,6 @@ namespace VsLikeDoking.UI.Host
 
       UpdateAutoHidePopupHostPadding(side);
 
-      UpdateAutoHidePopupHostPadding(side);
-
       // (PATCH) Host 크기 바뀐 직후 View가 0 사이즈로 남는 것 방지
       if (_AutoHidePopupView is not null && !_AutoHidePopupView.IsDisposed && ReferenceEquals(_AutoHidePopupView.Parent, _AutoHidePopupHost))
       {
@@ -1105,6 +1103,7 @@ namespace VsLikeDoking.UI.Host
       if (view is null || view.IsDisposed) return false;
 
       var changed = false;
+      var changeNotes = new List<string>(4);
 
       try
       {
@@ -1113,6 +1112,7 @@ namespace VsLikeDoking.UI.Host
         {
           parent.Controls.Remove(view);
           changed = true;
+          changeNotes.Add($"reparent:{parent.GetType().Name}");
         }
       }
       catch { }
@@ -1124,33 +1124,31 @@ namespace VsLikeDoking.UI.Host
           view.Dock = DockStyle.Fill;
           _AutoHidePopupHost.Controls.Add(view);
           changed = true;
+          changeNotes.Add("attach-to-host");
         }
 
         if (!view.Visible)
         {
           view.Visible = true;
           changed = true;
+          changeNotes.Add("view-visible");
         }
 
         if (!view.Enabled)
           view.Enabled = true;
 
-        if (_AutoHidePopupHost.ClientSize.Width > 0 && _AutoHidePopupHost.ClientSize.Height > 0)
-        {
-          var displayRect = _AutoHidePopupHost.DisplayRectangle;
-          if (view.Bounds != displayRect)
-          {
-            view.Bounds = displayRect;
-            changed = true;
-          }
-        }
+        // Bounds는 UpdateAutoHidePopupHostLayoutCore에서만 맞춘다.
+        // 여기서 매번 보정하면 Dock/Layout과 충돌하며 무의미한 changed 루프를 만들 수 있다.
 
         // 그립이 항상 위
         if (_AutoHideResizeGrip is not null && !_AutoHideResizeGrip.IsDisposed)
           _AutoHideResizeGrip.BringToFront();
 
         if (changed)
+        {
           _AutoHidePopupHost.PerformLayout();
+          TraceAutoHide("EnsureAutoHidePopupViewAttached", string.Join(",", changeNotes));
+        }
       }
       catch { }
 
