@@ -4,6 +4,7 @@ using System.Drawing;
 using System.IO;
 
 using VsLikeDoking.Layout.Model;
+using VsLikeDoking.Layout.Nodes;
 using VsLikeDoking.Utils;
 
 namespace VsLikeDoking.Core
