@@ -771,18 +771,28 @@ namespace VsLikeDoking.UI.Host
       }
 
       _AutoHidePopupView = view;
-      EnsureAutoHidePopupViewAttached(view);
+      var attachedChanged = EnsureAutoHidePopupViewAttached(view);
 
       UpdateAutoHidePopupHostLayoutCore(bounds, side, popupSize);
 
+      var hostWasVisible = _AutoHidePopupHost.Visible;
+
       try
       {
-        _AutoHidePopupHost.Visible = true;
-        _AutoHidePopupHost.BringToFront();
+        if (!_AutoHidePopupHost.Visible)
+          _AutoHidePopupHost.Visible = true;
 
-        view.BringToFront();
-        view.Visible = true;
-        TraceAutoHide("PresentAutoHidePopupHost", $"host shown key={key}");
+        if (!hostWasVisible || attachedChanged)
+        {
+          _AutoHidePopupHost.BringToFront();
+          view.BringToFront();
+        }
+
+        if (!view.Visible)
+          view.Visible = true;
+
+        if (!hostWasVisible || attachedChanged)
+          TraceAutoHide("PresentAutoHidePopupHost", $"host shown key={key}, attachedChanged={attachedChanged}");
       }
       catch { }
     }
@@ -871,14 +881,27 @@ namespace VsLikeDoking.UI.Host
         return;
       }
 
-      try { _AutoHidePopupHost.Bounds = rc; } catch { }
+      try
+      {
+        if (_AutoHidePopupHost.Bounds != rc)
+          _AutoHidePopupHost.Bounds = rc;
+      }
+      catch { }
+
+      UpdateAutoHidePopupHostPadding(side);
 
       UpdateAutoHidePopupHostPadding(side);
 
       // (PATCH) Host 크기 바뀐 직후 View가 0 사이즈로 남는 것 방지
       if (_AutoHidePopupView is not null && !_AutoHidePopupView.IsDisposed && ReferenceEquals(_AutoHidePopupView.Parent, _AutoHidePopupHost))
       {
-        try { _AutoHidePopupView.Bounds = _AutoHidePopupHost.DisplayRectangle; } catch { }
+        try
+        {
+          var displayRect = _AutoHidePopupHost.DisplayRectangle;
+          if (_AutoHidePopupView.Bounds != displayRect)
+            _AutoHidePopupView.Bounds = displayRect;
+        }
+        catch { }
       }
 
       UpdateAutoHideResizeGripLayout(side);
@@ -1152,7 +1175,12 @@ namespace VsLikeDoking.UI.Host
       else
         top += AutoHideResizeGripThickness;
 
-      try { _AutoHidePopupHost.Padding = new Padding(left, top, right, bottom); }
+      try
+      {
+        var next = new Padding(left, top, right, bottom);
+        if (_AutoHidePopupHost.Padding != next)
+          _AutoHidePopupHost.Padding = next;
+      }
       catch { }
     }
 
