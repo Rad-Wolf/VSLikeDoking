@@ -69,6 +69,19 @@ namespace VsLikeDoking.Core
 
       var key = persistKey.Trim();
 
+      // ToolWindow는 문서 트리로 되돌리지 않는다.
+      // 현재 모델에서 Unpin은 "해당 edge에서 확장 표시" 의미로 처리한다.
+      if (IsToolKey(key))
+      {
+        var shown = ShowAutoHidePopup(key, reason ?? $"AutoHide:Expand:{key}");
+        if (!shown) return false;
+
+        if (makeActive)
+          SetActiveContent(key);
+
+        return true;
+      }
+
       var next = DockMutator.UnpinFromAutoHide(_Root, key, out var didChange, targetGroupNodeId, makeActive);
       if (!didChange) return false;
 
@@ -93,7 +106,12 @@ namespace VsLikeDoking.Core
         return PinToAutoHide(key, side, popupSize: null, showPopup: showPopupWhenPinned, reason: reason);
 
       if (TryFindAutoHideContainingKey(_Root, key, out _))
+      {
+        if (IsToolKey(key))
+          return ToggleAutoHidePopup(key, reason ?? $"AutoHide:ToggleExpand:{key}");
+
         return UnpinFromAutoHide(key, targetGroupNodeId, makeActive: true, reason: reason);
+      }
 
       return false;
     }
