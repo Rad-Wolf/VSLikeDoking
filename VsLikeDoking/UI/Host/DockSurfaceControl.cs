@@ -1112,16 +1112,14 @@ namespace VsLikeDoking.UI.Host
       var src = _Tree.Groups[info.SourceGroupIndex].Node;
       var dst = _Tree.Groups[drop.TargetGroupIndex].Node;
 
-      if (src.ContentKind == dst.ContentKind) return drop;
+      if (src.ContentKind == DockContentKind.Document)
+        return dst.ContentKind == DockContentKind.Document ? drop : DockDragDropService.DropInfo.None();
 
-      // 서로 Kind가 다르면:
-      // - DockToZone의 Left/Right/Top/Bottom(분할)만 허용
-      // - Center(합치기) / InsertTab(탭삽입) 은 차단
-      if (drop.Kind == DockDragDropService.DropKind.DockToZone
-        && drop.Zone != DockDragDropService.DockZone.Center)
-        return drop;
+      // ToolWindow는 문서 영역 드랍을 허용하지 않는다.
+      if (dst.ContentKind == DockContentKind.Document)
+        return DockDragDropService.DropInfo.None();
 
-      return DockDragDropService.DropInfo.None();
+      return drop;
     }
 
     private void TryCommitTabDrop(DockDragDropService.DragInfo info, DockDragDropService.DropInfo drop)
@@ -1148,15 +1146,7 @@ namespace VsLikeDoking.UI.Host
         srcGroup = _Tree.Groups[info.SourceGroupIndex].Node;
 
       var crossKind = (srcGroup is not null && srcGroup.ContentKind != dstGroup.ContentKind);
-
-      // cross-kind인 경우:
-      // - DockToZone + (Left/Right/Top/Bottom)만 허용
-      // - Center / InsertTab 은 커밋 단계에서도 차단
-      if (crossKind)
-      {
-        if (drop.Kind != DockDragDropService.DropKind.DockToZone) return;
-        if (drop.Zone == DockDragDropService.DockZone.Center) return;
-      }
+      if (crossKind) return;
 
       // 같은 그룹 Center 도킹은 noop(활성만)
       if (srcGroup is not null
