@@ -146,12 +146,18 @@ namespace VsLikeDoking.Core
 
       var key = persistKey.Trim();
 
-      toolPaneRatio = NormalizeToolPaneRatio(toolPaneRatio);
+      if (!IsToolKey(key)) return;
 
-      var ensured = DockMutator.EnsureToolArea(_Root, out var toolGroup, placement, toolPaneRatio);
-      var targetId = toolGroup.NodeId;
+      var autoHideSide = placement switch
+      {
+        DockToolAreaPlacement.Left => DockAutoHideSide.Left,
+        DockToolAreaPlacement.Top => DockAutoHideSide.Top,
+        DockToolAreaPlacement.Bottom => DockAutoHideSide.Bottom,
+        _ => DockAutoHideSide.Right,
+      };
 
-      var next = DockCore(ensured, key, targetId, side, newPaneRatio, makeActive, out var didChange, out var autoReason);
+      var next = DockMutator.PinToAutoHide(_Root, key, autoHideSide, out var didChange);
+      var autoReason = $"DockToToolArea:{key}:{autoHideSide}";
       if (!didChange) return;
 
       ApplyLayout(next, reason ?? autoReason ?? $"DockToToolArea:{key}");
@@ -174,6 +180,8 @@ namespace VsLikeDoking.Core
       var key = persistKey.Trim();
       var targetId = targetGroupNodeId.Trim();
 
+      if (!EnsureRoleAllowedForGroupDock(key, targetId, side)) return;
+
       var next = DockCore(_Root, key, targetId, side, newPaneRatio, makeActive, out var didChange, out var autoReason);
       if (!didChange) return;
 
@@ -194,6 +202,8 @@ namespace VsLikeDoking.Core
 
       var key = persistKey.Trim();
       var targetId = targetGroupNodeId.Trim();
+
+      if (!EnsureRoleAllowedForTabMove(key, targetId)) return false;
 
       if (!TryFindGroupContainingKey(_Root, key, out var sourceGroup)) return false;
 
@@ -526,6 +536,38 @@ namespace VsLikeDoking.Core
 
       return DockDefaults.ClampLayoutRatio(ratio);
     }
+
+    /// <summary>키의 역할(문서/툴)에 따라 그룹 도킹 허용 여부를 검사한다.</summary>
+    protected bool EnsureRoleAllowedForGroupDock(string persistKey, string targetGroupNodeId, DockDropSide side)
+    {
+      var target = DockMutator.FindByNodeId(_Root, targetGroupNodeId) as DockGroupNode;
+      if (target is null) return false;
+
+      if (IsDocumentKey(persistKey))
+        return target.ContentKind == DockContentKind.Document;
+
+      if (IsToolKey(persistKey))
+        return false;
+
+      return side != DockDropSide.Center || target.ContentKind == DockContentKind.Document;
+    }
+
+    /// <summary>키의 역할(문서/툴)에 따라 탭 이동 허용 여부를 검사한다.</summary>
+    protected bool EnsureRoleAllowedForTabMove(string persistKey, string targetGroupNodeId)
+    {
+      var target = DockMutator.FindByNodeId(_Root, targetGroupNodeId) as DockGroupNode;
+      if (target is null) return false;
+
+      if (IsToolKey(persistKey)) return false;
+      if (IsDocumentKey(persistKey)) return target.ContentKind == DockContentKind.Document;
+      return true;
+    }
+
+    private bool IsDocumentKey(string persistKey)
+      => Registry.Get(persistKey)?.Kind == DockContentKind.Document;
+
+    private bool IsToolKey(string persistKey)
+      => Registry.Get(persistKey)?.Kind == DockContentKind.ToolWindow;
 
     // Helpers ======================================================================================================
 

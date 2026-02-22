@@ -31,6 +31,8 @@ namespace VsLikeDoking.Layout.Persistence
       if (dto.Root is null) return DockDefaults.CreateEmptyDocumentLayout();
 
       var root = FromNodeDto(dto.Root);
+      root = DockLayoutMigration.NormalizeRoles(root);
+
       if (validate) root = DockValidator.ValidateAndFix(root);
       else root.SetParentInternal(null);
 
