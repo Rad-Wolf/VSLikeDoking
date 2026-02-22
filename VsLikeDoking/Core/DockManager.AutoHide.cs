@@ -103,7 +103,12 @@ namespace VsLikeDoking.Core
         return PinToAutoHide(key, side, popupSize: null, showPopup: showPopupWhenPinned, reason: reason);
 
       if (TryFindAutoHideContainingKey(_Root, key, out _))
+      {
+        if (IsToolKey(key))
+          return ToggleAutoHidePopup(key, reason ?? $"AutoHide:ToggleExpand:{key}");
+
         return UnpinFromAutoHide(key, targetGroupNodeId, makeActive: true, reason: reason);
+      }
 
       return false;
     }
