@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 
+using VsLikeDoking.Abstractions;
 using VsLikeDoking.Layout.Model;
 using VsLikeDoking.Layout.Nodes;
 using VsLikeDoking.Utils;
@@ -24,6 +25,11 @@ namespace VsLikeDoking.Core
       ThrowIfDisposed();
 
       var key = persistKey.Trim();
+
+      if (IsDocumentKey(key)) return false;
+
+      var content = Registry.Get(key);
+      if (content is IDockToolOptions opt && !opt.CanHide) return false;
 
       var wasActive = string.Equals(_ActiveContent?.PersistKey, key, StringComparison.Ordinal);
 
