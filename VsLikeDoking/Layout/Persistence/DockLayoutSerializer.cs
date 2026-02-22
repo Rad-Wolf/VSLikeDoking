@@ -30,7 +30,7 @@ namespace VsLikeDoking.Layout.Persistence
 
       if (dto.Root is null) return DockDefaults.CreateEmptyDocumentLayout();
 
-      var root = FromNodeDto(dto.Root);
+      var root = NormalizeRoles(FromNodeDto(dto.Root));
       if (validate) root = DockValidator.ValidateAndFix(root);
       else root.SetParentInternal(null);
 
@@ -168,7 +168,106 @@ namespace VsLikeDoking.Layout.Persistence
       return node;
     }
 
-    // DTO Convert ==============================================================
+    
+    private static DockNode NormalizeRoles(DockNode root)
+    {
+      var toolBySide = new Dictionary<DockAutoHideSide, List<DockAutoHideItem>>();
+      foreach (DockAutoHideSide side in Enum.GetValues(typeof(DockAutoHideSide)))
+        toolBySide[side] = new List<DockAutoHideItem>();
+
+      var documentOverflow = new List<DockGroupItem>();
+
+      var normalizedDocumentRoot = NormalizeDocumentNode(root, toolBySide, documentOverflow) ?? new DockGroupNode(DockContentKind.Document);
+
+      if (documentOverflow.Count > 0)
+      {
+        var firstDoc = DockMutator.FindFirstGroupByKind(normalizedDocumentRoot, DockContentKind.Document) ?? (normalizedDocumentRoot as DockGroupNode);
+        if (firstDoc is null)
+        {
+          firstDoc = new DockGroupNode(DockContentKind.Document);
+          normalizedDocumentRoot = new DockSplitNode(DockSplitOrientation.Vertical, 0.5, normalizedDocumentRoot, firstDoc);
+        }
+
+        for (int i = 0; i < documentOverflow.Count; i++)
+        {
+          var it = documentOverflow[i];
+          if (firstDoc.IndexOf(it.PersistKey) >= 0) continue;
+          firstDoc.Add(it);
+        }
+      }
+
+      DockNode next = normalizedDocumentRoot;
+      foreach (var pair in toolBySide)
+      {
+        if (pair.Value.Count == 0) continue;
+
+        next = DockMutator.EnsureAutoHideStrip(next, pair.Key, out var strip, DockContentKind.ToolWindow);
+        for (int i = 0; i < pair.Value.Count; i++)
+        {
+          var it = pair.Value[i];
+          if (strip.Contains(it.PersistKey)) continue;
+          strip.Add(it);
+        }
+      }
+
+      return next;
+    }
+
+    private static DockNode? NormalizeDocumentNode(DockNode node, Dictionary<DockAutoHideSide, List<DockAutoHideItem>> toolBySide, List<DockGroupItem> documentOverflow)
+    {
+      if (node is DockGroupNode group)
+      {
+        if (group.ContentKind == DockContentKind.ToolWindow)
+        {
+          for (int i = 0; i < group.Items.Count; i++)
+            toolBySide[DockAutoHideSide.Right].Add(new DockAutoHideItem(group.Items[i].PersistKey, group.Items[i].State));
+          return null;
+        }
+
+        var doc = new DockGroupNode(DockContentKind.Document, group.NodeId);
+        for (int i = 0; i < group.Items.Count; i++)
+          doc.Add(group.Items[i].PersistKey, group.Items[i].State);
+
+        if (!string.IsNullOrWhiteSpace(group.ActiveKey)) doc.SetActive(group.ActiveKey);
+        return doc;
+      }
+
+      if (node is DockAutoHideNode ah)
+      {
+        if (ah.ContentKind == DockContentKind.Document)
+        {
+          for (int i = 0; i < ah.Items.Count; i++)
+            documentOverflow.Add(new DockGroupItem(ah.Items[i].PersistKey, ah.Items[i].State));
+          return null;
+        }
+
+        for (int i = 0; i < ah.Items.Count; i++)
+          toolBySide[ah.Side].Add(new DockAutoHideItem(ah.Items[i].PersistKey, ah.Items[i].State) { PopupSize = ah.Items[i].PopupSize });
+        return null;
+      }
+
+      if (node is DockSplitNode split)
+      {
+        var first = NormalizeDocumentNode(split.First, toolBySide, documentOverflow);
+        var second = NormalizeDocumentNode(split.Second, toolBySide, documentOverflow);
+
+        if (first is null && second is null) return null;
+        if (first is null) return second;
+        if (second is null) return first;
+
+        return new DockSplitNode(split.Orientation, split.Ratio, first, second, split.NodeId);
+      }
+
+      if (node is DockFloatingNode floating)
+      {
+        var fr = NormalizeDocumentNode(floating.Root, toolBySide, documentOverflow);
+        if (fr is null) return null;
+        return new DockFloatingNode(fr, floating.Bounds, floating.NodeId);
+      }
+
+      return node;
+    }
+// DTO Convert ==============================================================
 
     private static DockRectDto ToRectDto(Rectangle r)
     {

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 
+using VsLikeDoking.Abstractions;
 using VsLikeDoking.Layout.Model;
 using VsLikeDoking.Layout.Nodes;
 using VsLikeDoking.Utils;
@@ -26,6 +27,10 @@ namespace VsLikeDoking.Core
       var key = persistKey.Trim();
 
       var wasActive = string.Equals(_ActiveContent?.PersistKey, key, StringComparison.Ordinal);
+
+      var c = Registry.Get(key);
+      var k = TryGetContentKindFromRegistry(c);
+      if (k == DockContentKind.Document) return false;
 
       TraceAutoHide("PinToAutoHide", $"key={key}, side={side}, showPopup={showPopup}, reason={reason}");
 

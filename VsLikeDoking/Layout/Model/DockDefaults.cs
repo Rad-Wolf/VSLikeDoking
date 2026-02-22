@@ -33,20 +33,10 @@ namespace VsLikeDoking.Layout.Model
       return new DockGroupNode(DockContentKind.Document);
     }
 
-    /// <summary>기본 레이아웃(좌:문서 / 우:도구창 / 하단:출력창)을 생성한다.</summary>
+    /// <summary>기본 레이아웃(문서 영역 전용)을 생성한다.</summary>
     public static DockNode CreateDefaultLayout(double documentWidthRatio = DefaultDocumentWidthRatio, double topHeightRatio = DefaultTopHeightRatio)
     {
-      documentWidthRatio = ClampLayoutRatio(documentWidthRatio);
-      topHeightRatio = ClampLayoutRatio(topHeightRatio);
-
-      var documents = new DockGroupNode(DockContentKind.Document);
-      var rTools = new DockGroupNode(DockContentKind.ToolWindow);
-      var bTools = new DockGroupNode(DockContentKind.ToolWindow);
-
-      var top = new DockSplitNode(DockSplitOrientation.Vertical, documentWidthRatio, documents, rTools);
-      var root = new DockSplitNode(DockSplitOrientation.Horizontal, topHeightRatio, top, bTools);
-
-      return root;
+      return new DockGroupNode(DockContentKind.Document);
     }
 
     /// <summary>기본 레이아웃을 생성한다. ToolWindow 영역(우/하단)을 필요에 따라 제외할 수 있다.</summary>

@@ -146,12 +146,21 @@ namespace VsLikeDoking.Core
 
       var key = persistKey.Trim();
 
-      toolPaneRatio = NormalizeToolPaneRatio(toolPaneRatio);
+      var sideTarget = placement switch
+      {
+        DockToolAreaPlacement.Left => DockAutoHideSide.Left,
+        DockToolAreaPlacement.Right => DockAutoHideSide.Right,
+        DockToolAreaPlacement.Top => DockAutoHideSide.Top,
+        DockToolAreaPlacement.Bottom => DockAutoHideSide.Bottom,
+        _ => DockAutoHideSide.Right,
+      };
 
-      var ensured = DockMutator.EnsureToolArea(_Root, out var toolGroup, placement, toolPaneRatio);
-      var targetId = toolGroup.NodeId;
+      if (!PinToAutoHide(key, sideTarget, popupSize: null, showPopup: makeActive, reason: reason ?? $"DockToToolArea:{key}"))
+        return;
 
-      var next = DockCore(ensured, key, targetId, side, newPaneRatio, makeActive, out var didChange, out var autoReason);
+      var next = _Root;
+      var didChange = true;
+      var autoReason = reason;
       if (!didChange) return;
 
       ApplyLayout(next, reason ?? autoReason ?? $"DockToToolArea:{key}");
@@ -464,6 +473,9 @@ namespace VsLikeDoking.Core
 
       var srcKind = GetEffectiveDockKind(key, sourceGroup0, targetGroup0);
       var dstKind = targetGroup0.ContentKind;
+
+      if (!EnsureRoleAllowed(srcKind, dstKind))
+        return root;
 
       // Center/탭 합치기는 cross-kind 금지(문서↔툴 상호 변환/혼합 방지)
       if (side == DockDropSide.Center && srcKind != dstKind)
@@ -903,6 +915,15 @@ namespace VsLikeDoking.Core
       }
 
       return null;
+    }
+
+    /// <summary>도킹 역할 정책을 검증한다. 문서는 문서영역만, 도구는 문서영역으로 이동할 수 없다.</summary>
+    private static bool EnsureRoleAllowed(DockContentKind sourceKind, DockContentKind targetKind)
+    {
+      if (sourceKind == DockContentKind.Document)
+        return targetKind == DockContentKind.Document;
+
+      return targetKind == DockContentKind.ToolWindow;
     }
 
     private static DockSplitNode CreateSplitForSideDock(DockGroupNode targetGroup, DockGroupNode newGroup, DockDropSide side, double newPaneRatio)

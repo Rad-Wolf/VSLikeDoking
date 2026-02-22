@@ -1112,6 +1112,9 @@ namespace VsLikeDoking.UI.Host
       var src = _Tree.Groups[info.SourceGroupIndex].Node;
       var dst = _Tree.Groups[drop.TargetGroupIndex].Node;
 
+      if (src.ContentKind == DockContentKind.ToolWindow)
+        return DockDragDropService.DropInfo.None();
+
       if (src.ContentKind == dst.ContentKind) return drop;
 
       // 서로 Kind가 다르면:
