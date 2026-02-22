@@ -57,10 +57,10 @@ namespace VsLikeDoking.Core
       return true;
     }
 
-    /// <summary>PersistKey 컨텐츠를 AutoHide에서 다시 그룹으로 되돌린다(Unpin).</summary>
+    /// <summary>PersistKey 컨텐츠의 AutoHide Unpin 동작을 수행한다.</summary>
     /// <remarks>
-    /// - targetGroupNodeId가 null이면 같은 Kind의 첫 그룹으로 들어간다.
-    /// - ToolWindow인데 대상 그룹이 없으면 ToolArea를 생성하고 그 그룹으로 복귀한다.
+    /// - ToolWindow는 edge 멤버를 유지한 채 Expanded 상태로 전환한다.
+    /// - 그 외 종류는 기존처럼 그룹으로 복귀를 시도한다.
     /// </remarks>
     public bool UnpinFromAutoHide(string persistKey, string? targetGroupNodeId = null, bool makeActive = true, string? reason = null)
     {
@@ -69,17 +69,20 @@ namespace VsLikeDoking.Core
 
       var key = persistKey.Trim();
 
-      var workingRoot = _Root;
-      var targetId = targetGroupNodeId;
-
-      // ToolWindow Unpin 시 대상 그룹이 없으면 기본 Right Tool 그룹을 선보장한다.
-      if (IsToolKey(key) && string.IsNullOrWhiteSpace(targetId))
+      // ToolWindow는 항상 edge AutoHide 멤버로 유지한다.
+      // Unpin은 트리 이동이 아니라 "확장 표시"로 처리한다.
+      if (IsToolKey(key))
       {
-        workingRoot = DockMutator.EnsureToolArea(workingRoot, out var toolGroup, DockToolAreaPlacement.Right, DockDefaults.DefaultToolOntoDocumentNewPaneRatio);
-        targetId = toolGroup.NodeId;
+        var shown = ShowAutoHidePopup(key, reason ?? $"AutoHide:Expand:{key}");
+        if (!shown) return false;
+
+        if (makeActive)
+          SetActiveContent(key);
+
+        return true;
       }
 
-      var next = DockMutator.UnpinFromAutoHide(workingRoot, key, out var didChange, targetId, makeActive);
+      var next = DockMutator.UnpinFromAutoHide(_Root, key, out var didChange, targetGroupNodeId, makeActive);
       if (!didChange) return false;
 
       ApplyLayout(next, reason ?? $"AutoHide:Unpin:{key}");
