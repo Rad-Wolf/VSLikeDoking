@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 
+using VsLikeDoking.Abstractions;
 using VsLikeDoking.Layout.Model;
 using VsLikeDoking.Layout.Nodes;
 using VsLikeDoking.Utils;
@@ -24,6 +25,11 @@ namespace VsLikeDoking.Core
       ThrowIfDisposed();
 
       var key = persistKey.Trim();
+
+      if (IsDocumentKey(key)) return false;
+
+      var content = Registry.Get(key);
+      if (content is IDockToolOptions opt && !opt.CanHide) return false;
 
       var wasActive = string.Equals(_ActiveContent?.PersistKey, key, StringComparison.Ordinal);
 
@@ -51,10 +57,10 @@ namespace VsLikeDoking.Core
       return true;
     }
 
-    /// <summary>PersistKey 컨텐츠를 AutoHide에서 다시 그룹으로 되돌린다(Unpin).</summary>
+    /// <summary>PersistKey 컨텐츠의 AutoHide Unpin 동작을 수행한다.</summary>
     /// <remarks>
-    /// - targetGroupNodeId가 null이면 같은 Kind의 첫 그룹으로 들어간다.
-    /// - ToolWindow인데 대상 그룹이 없으면 ToolArea를 생성하고 그 그룹으로 복귀한다.
+    /// - ToolWindow는 edge 멤버를 유지한 채 Expanded 상태로 전환한다.
+    /// - 그 외 종류는 기존처럼 그룹으로 복귀를 시도한다.
     /// </remarks>
     public bool UnpinFromAutoHide(string persistKey, string? targetGroupNodeId = null, bool makeActive = true, string? reason = null)
     {
@@ -62,6 +68,24 @@ namespace VsLikeDoking.Core
       ThrowIfDisposed();
 
       var key = persistKey.Trim();
+
+      // ToolWindow는 항상 edge AutoHide 멤버로 유지한다.
+      // Unpin은 "접기(Expanded 해제)"로 처리한다.
+      if (IsToolEdgeMemberByLayoutOrRegistry(key))
+      {
+        var content = Registry.Get(key);
+        if (content is IDockToolOptions opt && !opt.CanHide)
+          return false;
+
+#if DEBUG
+        DebugDumpAutoHideState($"before-unpin:{key}");
+#endif
+        HideAutoHidePopup(reason ?? $"AutoHide:Collapse:{key}");
+#if DEBUG
+        DebugDumpAutoHideState($"after-unpin:{key}");
+#endif
+        return true;
+      }
 
       var next = DockMutator.UnpinFromAutoHide(_Root, key, out var didChange, targetGroupNodeId, makeActive);
       if (!didChange) return false;
@@ -87,7 +111,12 @@ namespace VsLikeDoking.Core
         return PinToAutoHide(key, side, popupSize: null, showPopup: showPopupWhenPinned, reason: reason);
 
       if (TryFindAutoHideContainingKey(_Root, key, out _))
+      {
+        if (IsToolEdgeMemberByLayoutOrRegistry(key))
+          return ToggleAutoHidePopup(key, reason ?? $"AutoHide:ToggleExpand:{key}");
+
         return UnpinFromAutoHide(key, targetGroupNodeId, makeActive: true, reason: reason);
+      }
 
       return false;
     }
@@ -216,6 +245,48 @@ namespace VsLikeDoking.Core
 
       return ShowAutoHidePopup(key, reason ?? $"AutoHide:ToggleOn:{key}");
     }
+
+
+#if DEBUG
+    private void DebugDumpAutoHideState(string phase)
+    {
+      var sb = new System.Text.StringBuilder();
+      sb.Append("[DBG][AutoHideState] ").Append(phase).Append(" | activePopup=").Append(_ActiveAutoHideKey ?? "(null)");
+
+      foreach (var n in _Root.TraverseDepthFirst(true))
+      {
+        if (n is not DockAutoHideNode ah) continue;
+
+        sb.Append(" | side=").Append(ah.Side).Append(" active=").Append(ah.ActiveKey ?? "(null)").Append(" items=[");
+        for (int i = 0; i < ah.Items.Count; i++)
+        {
+          if (i > 0) sb.Append(',');
+          var key = ah.Items[i].PersistKey;
+          var canHide = "?";
+          var c = Registry.Get(key);
+          if (c is IDockToolOptions opt) canHide = opt.CanHide ? "T" : "F";
+          sb.Append(key).Append("(CanHide=").Append(canHide).Append(')');
+        }
+        sb.Append(']');
+      }
+
+      System.Diagnostics.Debug.WriteLine(sb.ToString());
+    }
+#endif
+
+    // Role Helpers ================================================================================================
+
+    private bool IsToolEdgeMemberByLayoutOrRegistry(string persistKey)
+    {
+      var key = NormalizeKey(persistKey);
+      if (key is null) return false;
+
+      if (TryFindAutoHideContainingKey(_Root, key, out var strip))
+        return strip.ContentKind == DockContentKind.ToolWindow;
+
+      return IsToolKey(key);
+    }
+
 
 
     private bool SetAutoHidePopupKeyCore(string? persistKey, string? reason)
