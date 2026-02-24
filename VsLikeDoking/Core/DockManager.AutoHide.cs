@@ -246,6 +246,20 @@ namespace VsLikeDoking.Core
       return ShowAutoHidePopup(key, reason ?? $"AutoHide:ToggleOn:{key}");
     }
 
+    // Role Helpers ================================================================================================
+
+    private bool IsToolEdgeMemberKey(string persistKey)
+    {
+      var key = NormalizeKey(persistKey);
+      if (key is null) return false;
+
+      if (TryFindAutoHideContainingKey(_Root, key, out var strip))
+        return strip.ContentKind == DockContentKind.ToolWindow;
+
+      return IsToolKey(key);
+    }
+
+
 
 #if DEBUG
     private void DebugDumpAutoHideState(string phase)

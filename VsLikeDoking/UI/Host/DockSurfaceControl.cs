@@ -846,7 +846,7 @@ namespace VsLikeDoking.UI.Host
             _AutoHidePopupChrome.BringToFront();
         }
 
-        var repaired = EnsureAutoHidePopupViewAttachedByManagerState();
+        repaired = EnsureAutoHidePopupViewAttachedByManagerState();
 
         try
         {
