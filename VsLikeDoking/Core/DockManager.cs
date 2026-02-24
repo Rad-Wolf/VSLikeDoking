@@ -107,6 +107,10 @@ namespace VsLikeDoking.Core
       if (validate) _Root = DockValidator.ValidateAndFix(_Root);
       else _Root.SetParentInternal(null);
 
+#if DEBUG
+      DebugEnsureRoleInvariants(_Root, reason);
+#endif
+
       // AutoHide 표시 상태가 레이아웃에 남아있지 않도록 항상 동기화한다.
       // - 현재 표시 키가 더 이상 AutoHide에 없으면 자동 해제
       SyncAutoHidePopupStateToLayout(ref _ActiveAutoHideKey, _Root);
@@ -146,12 +150,18 @@ namespace VsLikeDoking.Core
 
       var key = persistKey.Trim();
 
-      toolPaneRatio = NormalizeToolPaneRatio(toolPaneRatio);
+      if (!IsToolKey(key)) return;
 
-      var ensured = DockMutator.EnsureToolArea(_Root, out var toolGroup, placement, toolPaneRatio);
-      var targetId = toolGroup.NodeId;
+      var autoHideSide = placement switch
+      {
+        DockToolAreaPlacement.Left => DockAutoHideSide.Left,
+        DockToolAreaPlacement.Top => DockAutoHideSide.Top,
+        DockToolAreaPlacement.Bottom => DockAutoHideSide.Bottom,
+        _ => DockAutoHideSide.Right,
+      };
 
-      var next = DockCore(ensured, key, targetId, side, newPaneRatio, makeActive, out var didChange, out var autoReason);
+      var next = DockMutator.PinToAutoHide(_Root, key, autoHideSide, out var didChange);
+      var autoReason = $"DockToToolArea:{key}:{autoHideSide}";
       if (!didChange) return;
 
       ApplyLayout(next, reason ?? autoReason ?? $"DockToToolArea:{key}");
@@ -174,6 +184,8 @@ namespace VsLikeDoking.Core
       var key = persistKey.Trim();
       var targetId = targetGroupNodeId.Trim();
 
+      if (!EnsureRoleAllowedForGroupDock(key, targetId, side)) return;
+
       var next = DockCore(_Root, key, targetId, side, newPaneRatio, makeActive, out var didChange, out var autoReason);
       if (!didChange) return;
 
@@ -194,6 +206,8 @@ namespace VsLikeDoking.Core
 
       var key = persistKey.Trim();
       var targetId = targetGroupNodeId.Trim();
+
+      if (!EnsureRoleAllowedForTabMove(key, targetId)) return false;
 
       if (!TryFindGroupContainingKey(_Root, key, out var sourceGroup)) return false;
 
@@ -527,6 +541,38 @@ namespace VsLikeDoking.Core
       return DockDefaults.ClampLayoutRatio(ratio);
     }
 
+    /// <summary>키의 역할(문서/툴)에 따라 그룹 도킹 허용 여부를 검사한다.</summary>
+    protected bool EnsureRoleAllowedForGroupDock(string persistKey, string targetGroupNodeId, DockDropSide side)
+    {
+      var target = DockMutator.FindByNodeId(_Root, targetGroupNodeId) as DockGroupNode;
+      if (target is null) return false;
+
+      if (IsDocumentKey(persistKey))
+        return target.ContentKind == DockContentKind.Document;
+
+      if (IsToolKey(persistKey))
+        return false;
+
+      return side != DockDropSide.Center || target.ContentKind == DockContentKind.Document;
+    }
+
+    /// <summary>키의 역할(문서/툴)에 따라 탭 이동 허용 여부를 검사한다.</summary>
+    protected bool EnsureRoleAllowedForTabMove(string persistKey, string targetGroupNodeId)
+    {
+      var target = DockMutator.FindByNodeId(_Root, targetGroupNodeId) as DockGroupNode;
+      if (target is null) return false;
+
+      if (IsToolKey(persistKey)) return false;
+      if (IsDocumentKey(persistKey)) return target.ContentKind == DockContentKind.Document;
+      return true;
+    }
+
+    private bool IsDocumentKey(string persistKey)
+      => Registry.Get(persistKey)?.Kind == DockContentKind.Document;
+
+    private bool IsToolKey(string persistKey)
+      => Registry.Get(persistKey)?.Kind == DockContentKind.ToolWindow;
+
     // Helpers ======================================================================================================
 
     private void ThrowIfDisposed()
@@ -757,6 +803,40 @@ namespace VsLikeDoking.Core
 
       return false;
     }
+
+
+#if DEBUG
+    private void DebugEnsureRoleInvariants(DockNode root, string? reason)
+    {
+      foreach (var n in root.TraverseDepthFirst(true))
+      {
+        if (n is DockGroupNode g)
+        {
+          for (int i = 0; i < g.Items.Count; i++)
+          {
+            var key = g.Items[i].PersistKey;
+            var content = Registry.Get(key);
+            if (content is null) continue;
+
+            if (g.ContentKind == DockContentKind.Document && content.Kind == DockContentKind.ToolWindow)
+              throw new InvalidOperationException($"Tool must not be inserted into DocumentRoot. key={key}, reason={reason}\n{Environment.StackTrace}");
+          }
+        }
+        else if (n is DockAutoHideNode ah)
+        {
+          for (int i = 0; i < ah.Items.Count; i++)
+          {
+            var key = ah.Items[i].PersistKey;
+            var content = Registry.Get(key);
+            if (content is null) continue;
+
+            if (ah.ContentKind == DockContentKind.ToolWindow && content.Kind == DockContentKind.Document)
+              throw new InvalidOperationException($"Document must not be inserted into ToolEdges. key={key}, reason={reason}\n{Environment.StackTrace}");
+          }
+        }
+      }
+    }
+#endif
 
     private string? TryGetContentState(string persistKey)
     {
