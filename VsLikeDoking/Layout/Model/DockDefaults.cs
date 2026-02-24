@@ -40,13 +40,7 @@ namespace VsLikeDoking.Layout.Model
       topHeightRatio = ClampLayoutRatio(topHeightRatio);
 
       var documents = new DockGroupNode(DockContentKind.Document);
-      var rTools = new DockGroupNode(DockContentKind.ToolWindow);
-      var bTools = new DockGroupNode(DockContentKind.ToolWindow);
-
-      var top = new DockSplitNode(DockSplitOrientation.Vertical, documentWidthRatio, documents, rTools);
-      var root = new DockSplitNode(DockSplitOrientation.Horizontal, topHeightRatio, top, bTools);
-
-      return root;
+      return documents;
     }
 
     /// <summary>기본 레이아웃을 생성한다. ToolWindow 영역(우/하단)을 필요에 따라 제외할 수 있다.</summary>
@@ -59,26 +53,7 @@ namespace VsLikeDoking.Layout.Model
       documentWidthRatio = ClampLayoutRatio(documentWidthRatio);
       topHeightRatio = ClampLayoutRatio(topHeightRatio);
 
-      var documents = new DockGroupNode(DockContentKind.Document);
-
-      if (!includeRightToolArea && !includeBottomToolArea)
-        return documents;
-
-      DockNode top = documents;
-
-      if (includeRightToolArea)
-      {
-        var rTools = new DockGroupNode(DockContentKind.ToolWindow);
-        top = new DockSplitNode(DockSplitOrientation.Vertical, documentWidthRatio, documents, rTools);
-      }
-
-      if (includeBottomToolArea)
-      {
-        var bTools = new DockGroupNode(DockContentKind.ToolWindow);
-        return new DockSplitNode(DockSplitOrientation.Horizontal, topHeightRatio, top, bTools);
-      }
-
-      return top;
+      return new DockGroupNode(DockContentKind.Document);
     }
 
     // Policy Helpers ==============================================================================================

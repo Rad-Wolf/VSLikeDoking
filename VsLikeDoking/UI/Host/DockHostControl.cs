@@ -283,7 +283,9 @@ namespace VsLikeDoking.UI.Host
 
       ApplyRootToSurface(force: sameRef && forceApplyToSurface);
 
-      if (raiseEvent) RootChanged?.Invoke(this, EventArgs.Empty);
+      // 동일 루트 참조에서는 RootChanged를 올리지 않는다.
+      // (예: AutoHide 팝업 표시/숨김처럼 레이아웃 상태만 바뀌는 경우)
+      if (raiseEvent && !sameRef) RootChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void FlushInvalidate()
