@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Forms;
 
@@ -280,6 +281,10 @@ namespace VsLikeDoking.UI.Host
       if (sameRef && !forceApplyToSurface) return;
 
       _Root = root;
+
+#if DEBUG
+      Debug.WriteLine($"[DBG] RootAssigned old={(sameRef ? "same" : "diff")} force={forceApplyToSurface} raise={raiseEvent} newType={root?.GetType().Name ?? "(null)"}\n{Environment.StackTrace}");
+#endif
 
       ApplyRootToSurface(force: sameRef && forceApplyToSurface);
 

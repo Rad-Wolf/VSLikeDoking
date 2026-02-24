@@ -107,6 +107,10 @@ namespace VsLikeDoking.Core
       if (validate) _Root = DockValidator.ValidateAndFix(_Root);
       else _Root.SetParentInternal(null);
 
+#if DEBUG
+      DebugEnsureRoleInvariants(_Root, reason);
+#endif
+
       // AutoHide 표시 상태가 레이아웃에 남아있지 않도록 항상 동기화한다.
       // - 현재 표시 키가 더 이상 AutoHide에 없으면 자동 해제
       SyncAutoHidePopupStateToLayout(ref _ActiveAutoHideKey, _Root);
@@ -799,6 +803,40 @@ namespace VsLikeDoking.Core
 
       return false;
     }
+
+
+#if DEBUG
+    private void DebugEnsureRoleInvariants(DockNode root, string? reason)
+    {
+      foreach (var n in root.TraverseDepthFirst(true))
+      {
+        if (n is DockGroupNode g)
+        {
+          for (int i = 0; i < g.Items.Count; i++)
+          {
+            var key = g.Items[i].PersistKey;
+            var content = Registry.Get(key);
+            if (content is null) continue;
+
+            if (g.ContentKind == DockContentKind.Document && content.Kind == DockContentKind.ToolWindow)
+              throw new InvalidOperationException($"Tool must not be inserted into DocumentRoot. key={key}, reason={reason}\n{Environment.StackTrace}");
+          }
+        }
+        else if (n is DockAutoHideNode ah)
+        {
+          for (int i = 0; i < ah.Items.Count; i++)
+          {
+            var key = ah.Items[i].PersistKey;
+            var content = Registry.Get(key);
+            if (content is null) continue;
+
+            if (ah.ContentKind == DockContentKind.ToolWindow && content.Kind == DockContentKind.Document)
+              throw new InvalidOperationException($"Document must not be inserted into ToolEdges. key={key}, reason={reason}\n{Environment.StackTrace}");
+          }
+        }
+      }
+    }
+#endif
 
     private string? TryGetContentState(string persistKey)
     {

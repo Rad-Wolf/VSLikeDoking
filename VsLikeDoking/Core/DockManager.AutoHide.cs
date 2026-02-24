@@ -70,15 +70,20 @@ namespace VsLikeDoking.Core
       var key = persistKey.Trim();
 
       // ToolWindow는 항상 edge AutoHide 멤버로 유지한다.
-      // Unpin은 트리 이동이 아니라 "확장 표시"로 처리한다.
+      // Unpin은 "접기(Expanded 해제)"로 처리한다.
       if (IsToolEdgeMemberKey(key))
       {
-        var shown = ShowAutoHidePopup(key, reason ?? $"AutoHide:Expand:{key}");
-        if (!shown) return false;
+        var content = Registry.Get(key);
+        if (content is IDockToolOptions opt && !opt.CanHide)
+          return false;
 
-        if (makeActive)
-          SetActiveContent(key);
-
+#if DEBUG
+        DebugDumpAutoHideState($"before-unpin:{key}");
+#endif
+        HideAutoHidePopup(reason ?? $"AutoHide:Collapse:{key}");
+#if DEBUG
+        DebugDumpAutoHideState($"after-unpin:{key}");
+#endif
         return true;
       }
 
@@ -240,6 +245,48 @@ namespace VsLikeDoking.Core
 
       return ShowAutoHidePopup(key, reason ?? $"AutoHide:ToggleOn:{key}");
     }
+
+    // Role Helpers ================================================================================================
+
+    private bool IsToolEdgeMemberKey(string persistKey)
+    {
+      var key = NormalizeKey(persistKey);
+      if (key is null) return false;
+
+      if (TryFindAutoHideContainingKey(_Root, key, out var strip))
+        return strip.ContentKind == DockContentKind.ToolWindow;
+
+      return IsToolKey(key);
+    }
+
+
+
+#if DEBUG
+    private void DebugDumpAutoHideState(string phase)
+    {
+      var sb = new System.Text.StringBuilder();
+      sb.Append("[DBG][AutoHideState] ").Append(phase).Append(" | activePopup=").Append(_ActiveAutoHideKey ?? "(null)");
+
+      foreach (var n in _Root.TraverseDepthFirst(true))
+      {
+        if (n is not DockAutoHideNode ah) continue;
+
+        sb.Append(" | side=").Append(ah.Side).Append(" active=").Append(ah.ActiveKey ?? "(null)").Append(" items=[");
+        for (int i = 0; i < ah.Items.Count; i++)
+        {
+          if (i > 0) sb.Append(',');
+          var key = ah.Items[i].PersistKey;
+          var canHide = "?";
+          var c = Registry.Get(key);
+          if (c is IDockToolOptions opt) canHide = opt.CanHide ? "T" : "F";
+          sb.Append(key).Append("(CanHide=").Append(canHide).Append(')');
+        }
+        sb.Append(']');
+      }
+
+      System.Diagnostics.Debug.WriteLine(sb.ToString());
+    }
+#endif
 
     // Role Helpers ================================================================================================
 
