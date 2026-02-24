@@ -71,7 +71,7 @@ namespace VsLikeDoking.Core
 
       // ToolWindow는 항상 edge AutoHide 멤버로 유지한다.
       // Unpin은 트리 이동이 아니라 "확장 표시"로 처리한다.
-      if (IsToolKey(key))
+      if (IsToolEdgeMemberKey(key))
       {
         var shown = ShowAutoHidePopup(key, reason ?? $"AutoHide:Expand:{key}");
         if (!shown) return false;
@@ -107,7 +107,7 @@ namespace VsLikeDoking.Core
 
       if (TryFindAutoHideContainingKey(_Root, key, out _))
       {
-        if (IsToolKey(key))
+        if (IsToolEdgeMemberKey(key))
           return ToggleAutoHidePopup(key, reason ?? $"AutoHide:ToggleExpand:{key}");
 
         return UnpinFromAutoHide(key, targetGroupNodeId, makeActive: true, reason: reason);
@@ -240,6 +240,20 @@ namespace VsLikeDoking.Core
 
       return ShowAutoHidePopup(key, reason ?? $"AutoHide:ToggleOn:{key}");
     }
+
+    // Role Helpers ================================================================================================
+
+    private bool IsToolEdgeMemberKey(string persistKey)
+    {
+      var key = NormalizeKey(persistKey);
+      if (key is null) return false;
+
+      if (TryFindAutoHideContainingKey(_Root, key, out var strip))
+        return strip.ContentKind == DockContentKind.ToolWindow;
+
+      return IsToolKey(key);
+    }
+
 
 
     private bool SetAutoHidePopupKeyCore(string? persistKey, string? reason)
